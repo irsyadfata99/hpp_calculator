@@ -1,7 +1,8 @@
-// File: lib/widgets/menu_ingredient_selector_widget.dart
+// File: lib/widgets/menu_ingredient_selector_widget.dart (Universal - Fixed)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/universal_unit_service.dart';
 
 class MenuIngredientSelectorWidget extends StatefulWidget {
   final List<Map<String, dynamic>> availableIngredients;
@@ -21,10 +22,8 @@ class MenuIngredientSelectorWidget extends StatefulWidget {
 class MenuIngredientSelectorWidgetState
     extends State<MenuIngredientSelectorWidget> {
   String? _selectedIngredient;
-  String _selectedSatuan = 'kg';
+  String _selectedSatuan = '%';
   final _jumlahController = TextEditingController();
-
-  static const List<String> _satuanOptions = ['kg', 'liter', 'unit', 'resep'];
 
   @override
   void dispose() {
@@ -35,23 +34,238 @@ class MenuIngredientSelectorWidgetState
   void _resetForm() {
     setState(() {
       _selectedIngredient = null;
-      _selectedSatuan = 'kg';
+      _selectedSatuan = '%';
     });
     _jumlahController.clear();
+  }
+
+  // Calculate cost berdasarkan mode yang dipilih
+  double _calculateCost() {
+    if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
+      return 0.0;
+    }
+
+    var ingredient = widget.availableIngredients
+        .firstWhere((item) => item['nama'] == _selectedIngredient);
+
+    double jumlah = double.tryParse(_jumlahController.text) ?? 0;
+
+    if (_selectedSatuan == '%') {
+      // Percentage mode
+      return UniversalUnitService.calculatePercentageCost(
+        totalPrice: ingredient['totalHarga'],
+        packageQuantity: ingredient['jumlah'],
+        percentageUsed: jumlah,
+      );
+    } else {
+      // Unit mode
+      return UniversalUnitService.calculateUnitCost(
+        totalPrice: ingredient['totalHarga'],
+        packageQuantity: ingredient['jumlah'],
+        unitsUsed: jumlah,
+      );
+    }
+  }
+
+  // Get unit price untuk reference
+  double _getUnitPrice() {
+    if (_selectedIngredient == null) return 0.0;
+
+    var ingredient = widget.availableIngredients
+        .firstWhere((item) => item['nama'] == _selectedIngredient);
+
+    return UniversalUnitService.calculateUnitPrice(
+      totalPrice: ingredient['totalHarga'],
+      packageQuantity: ingredient['jumlah'],
+    );
+  }
+
+  // Build helper info berdasarkan mode
+  Widget _buildCalculationHelper() {
+    if (_selectedIngredient == null) return const SizedBox.shrink();
+
+    var ingredient = widget.availableIngredients
+        .firstWhere((item) => item['nama'] == _selectedIngredient);
+
+    if (_selectedSatuan == '%') {
+      return _buildPercentageHelper(ingredient);
+    } else {
+      return _buildUnitHelper(ingredient);
+    }
+  }
+
+  Widget _buildPercentageHelper(Map<String, dynamic> ingredient) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.percent, color: Colors.blue[700], size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Mode Persentase (Cocok untuk semua UMKM)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Total belanja: ${UniversalUnitService.formatRupiah(ingredient['totalHarga'])}',
+            style: TextStyle(fontSize: 11, color: Colors.blue[700]),
+          ),
+          Text(
+            'Contoh: 5% = ${UniversalUnitService.formatRupiah(ingredient['totalHarga'] * 0.05)}',
+            style: TextStyle(fontSize: 11, color: Colors.blue[600]),
+          ),
+
+          // Real-time calculation
+          if (_jumlahController.text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Biaya: ${UniversalUnitService.formatRupiah(_calculateCost())}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.blue[800],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnitHelper(Map<String, dynamic> ingredient) {
+    double unitPrice = _getUnitPrice();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.straighten, color: Colors.green[700], size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Mode Unit Langsung',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Harga per ${ingredient['satuan']}: ${UniversalUnitService.formatRupiah(unitPrice)}',
+            style: TextStyle(fontSize: 11, color: Colors.green[700]),
+          ),
+
+          // Real-time calculation
+          if (_jumlahController.text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Biaya: ${UniversalUnitService.formatRupiah(_calculateCost())}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.green[800],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Build validation warning
+  Widget _buildValidationWarning() {
+    if (_selectedSatuan != '%' || _jumlahController.text.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    double percentage = double.tryParse(_jumlahController.text) ?? 0;
+    ValidationResult validation =
+        UniversalUnitService.validatePercentage(percentage);
+
+    if (!validation.isValid || validation.isWarning) {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: validation.isValid ? Colors.orange[50] : Colors.red[50],
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: validation.isValid ? Colors.orange[300]! : Colors.red[300]!,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              validation.isValid ? Icons.warning : Icons.error,
+              color: validation.isValid ? Colors.orange[600] : Colors.red[600],
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                validation.message,
+                style: TextStyle(
+                  fontSize: 11,
+                  color:
+                      validation.isValid ? Colors.orange[700] : Colors.red[700],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   void _addIngredient() {
     if (_selectedIngredient != null && _jumlahController.text.isNotEmpty) {
       double? jumlah = double.tryParse(_jumlahController.text);
       if (jumlah != null && jumlah > 0) {
-        var ingredient = widget.availableIngredients
-            .firstWhere((item) => item['nama'] == _selectedIngredient);
+        // Validate percentage jika perlu
+        if (_selectedSatuan == '%') {
+          ValidationResult validation =
+              UniversalUnitService.validatePercentage(jumlah);
+          if (!validation.isValid) {
+            return; // Don't add if invalid
+          }
+        }
+
+        double cost = _calculateCost();
+        double unitPrice = cost / jumlah; // Price per unit yang dipakai
 
         widget.onAddIngredient(
-          ingredient['nama'],
+          _selectedIngredient!,
           jumlah,
           _selectedSatuan,
-          ingredient['hargaPerSatuan'],
+          unitPrice,
         );
 
         _resetForm();
@@ -101,7 +315,7 @@ class MenuIngredientSelectorWidgetState
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
-            'Komposisi Menu',
+            'Komposisi Produk',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -127,7 +341,7 @@ class MenuIngredientSelectorWidgetState
           SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Belum ada data bahan baku. Silakan lengkapi data Variable Cost terlebih dahulu.',
+              'Belum ada data bahan. Silakan lengkapi data belanja bahan terlebih dahulu.',
               style: TextStyle(color: Colors.orange),
             ),
           ),
@@ -137,6 +351,8 @@ class MenuIngredientSelectorWidgetState
   }
 
   Widget _buildIngredientSelector() {
+    List<String> usageUnits = UniversalUnitService.getUsageUnits();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -156,10 +372,16 @@ class MenuIngredientSelectorWidgetState
             const SizedBox(width: 12),
             // Dropdown Satuan
             Expanded(
-              child: _buildSatuanDropdown(),
+              child: _buildSatuanDropdown(usageUnits),
             ),
           ],
         ),
+
+        // Calculation Helper
+        _buildCalculationHelper(),
+
+        // Validation Warning
+        _buildValidationWarning(),
 
         const SizedBox(height: 16),
 
@@ -171,10 +393,10 @@ class MenuIngredientSelectorWidgetState
 
   Widget _buildIngredientDropdown() {
     return DropdownButtonFormField<String>(
-      value: _selectedIngredient,
+      initialValue: _selectedIngredient,
       decoration: const InputDecoration(
         labelText: 'Pilih Bahan',
-        hintText: 'Pilih bahan dari daftar',
+        hintText: 'Pilih bahan dari daftar belanja',
         prefixIcon: Icon(Icons.inventory),
       ),
       items: widget.availableIngredients.map((ingredient) {
@@ -189,7 +411,7 @@ class MenuIngredientSelectorWidgetState
                 style: const TextStyle(fontWeight: FontWeight.w500),
               ),
               Text(
-                'Rp ${ingredient['hargaPerSatuan'].toStringAsFixed(0)}/${ingredient['satuan']}',
+                '${ingredient['jumlah']} ${ingredient['satuan']} - ${UniversalUnitService.formatRupiah(ingredient['totalHarga'])}',
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.grey[600],
@@ -202,57 +424,81 @@ class MenuIngredientSelectorWidgetState
       onChanged: (value) {
         setState(() {
           _selectedIngredient = value;
+          _jumlahController.clear();
         });
       },
     );
   }
 
   Widget _buildJumlahInput() {
+    String hint = _selectedSatuan == '%' ? '5' : '1';
+    String helper =
+        _selectedSatuan == '%' ? 'Masukkan persentase' : 'Bisa desimal';
+
     return TextField(
       controller: _jumlahController,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
       ],
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Jumlah',
-        hintText: '0',
-        prefixIcon: Icon(Icons.straighten),
+        hintText: hint,
+        prefixIcon:
+            Icon(_selectedSatuan == '%' ? Icons.percent : Icons.straighten),
+        helperText: helper,
       ),
+      onChanged: (value) {
+        setState(() {}); // Update real-time calculation
+      },
     );
   }
 
-  Widget _buildSatuanDropdown() {
+  Widget _buildSatuanDropdown(List<String> units) {
     return DropdownButtonFormField<String>(
-      value: _selectedSatuan,
+      initialValue: _selectedSatuan,
       decoration: const InputDecoration(
         labelText: 'Satuan',
         prefixIcon: Icon(Icons.scale),
       ),
-      items: _satuanOptions.map((satuan) {
+      items: units.map((satuan) {
+        String displayText = satuan;
+        if (satuan == '%') {
+          displayText = '% (Persentase)';
+        }
         return DropdownMenuItem<String>(
           value: satuan,
-          child: Text(satuan),
+          child: Text(displayText),
         );
       }).toList(),
       onChanged: (value) {
         setState(() {
-          _selectedSatuan = value ?? 'kg';
+          _selectedSatuan = value ?? '%';
+          _jumlahController.clear();
         });
       },
     );
   }
 
   Widget _buildAddButton() {
+    bool canAdd =
+        _selectedIngredient != null && _jumlahController.text.isNotEmpty;
+
+    // Show estimated cost
+    String buttonText = 'Tambah ke Produk';
+    if (canAdd) {
+      double cost = _calculateCost();
+      if (cost > 0) {
+        buttonText = 'Tambah - ${UniversalUnitService.formatRupiah(cost)}';
+      }
+    }
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed:
-            (_selectedIngredient != null && _jumlahController.text.isNotEmpty)
-                ? _addIngredient
-                : null,
+        onPressed: canAdd ? _addIngredient : null,
         icon: const Icon(Icons.add),
-        label: const Text('Tambah ke Menu'),
+        label: Text(buttonText),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green[600],
           foregroundColor: Colors.white,

@@ -16,6 +16,9 @@ dependencies:
   # Input formatting
   intl: ^0.19.0
 
+  # Local storage
+  shared_preferences: ^2.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

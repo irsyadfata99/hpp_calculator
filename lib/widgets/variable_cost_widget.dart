@@ -1,5 +1,8 @@
+// File: lib/widgets/variable_cost_widget.dart (Universal)
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/universal_unit_service.dart';
 
 class VariableCostWidget extends StatefulWidget {
   final List<Map<String, dynamic>> variableCosts;
@@ -23,16 +26,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   final _namaController = TextEditingController();
   final _totalHargaController = TextEditingController();
   final _jumlahController = TextEditingController();
-  String _selectedSatuan = 'kg';
-
-  static const List<String> _satuanOptions = [
-    'kg',
-    'gram',
-    'liter',
-    'ml',
-    'pcs',
-    'pack'
-  ];
+  String _selectedSatuan = 'unit';
 
   @override
   void dispose() {
@@ -40,13 +34,6 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
     _totalHargaController.dispose();
     _jumlahController.dispose();
     super.dispose();
-  }
-
-  String _formatRupiah(double amount) {
-    return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]}.',
-        )}';
   }
 
   void _tambahItem() {
@@ -64,7 +51,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         _namaController.clear();
         _totalHargaController.clear();
         _jumlahController.clear();
-        _selectedSatuan = 'kg';
+        _selectedSatuan = 'unit';
 
         setState(() {});
       }
@@ -97,7 +84,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              const Text('Daftar Bahan:',
+              const Text('Daftar Belanja:',
                   style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
 
@@ -135,7 +122,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
-            'Variable Cost',
+            'Belanja Bahan',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -148,10 +135,12 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   }
 
   Widget _buildFormInput() {
+    List<String> packageUnits = UniversalUnitService.getPackageUnits();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Tambah Bahan Baku:',
+        const Text('Tambah Bahan yang Dibeli:',
             style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
 
@@ -159,8 +148,8 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         TextField(
           controller: _namaController,
           decoration: const InputDecoration(
-            labelText: 'Nama Barang',
-            hintText: 'Contoh: Beras, Ayam, Minyak',
+            labelText: 'Nama Bahan',
+            hintText: 'Contoh: Kain Katun, Selai, Kertas A4',
             prefixIcon: Icon(Icons.inventory),
           ),
         ),
@@ -170,6 +159,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         // Row untuk Total Harga, Jumlah, dan Satuan
         Row(
           children: [
+            // Total Harga
             Expanded(
               flex: 2,
               child: TextField(
@@ -185,27 +175,57 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
               ),
             ),
             const SizedBox(width: 12),
+
+            // Jumlah
             Expanded(
               child: TextField(
                 controller: _jumlahController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
                 decoration: const InputDecoration(
                   labelText: 'Jumlah',
-                  hintText: '5',
+                  hintText: '1',
                 ),
               ),
             ),
             const SizedBox(width: 12),
+
             // Dropdown Satuan
-            _buildSatuanDropdown(),
+            _buildSatuanDropdown(packageUnits),
           ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // Info helper untuk percentage mode
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.blue[200]!),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue[600], size: 16),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Nanti bisa pakai persentase (%) untuk menghitung pemakaian per produk',
+                  style: TextStyle(fontSize: 11, color: Colors.blue),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildSatuanDropdown() {
+  Widget _buildSatuanDropdown(List<String> units) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -216,7 +236,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
       child: DropdownButton<String>(
         value: _selectedSatuan,
         underline: const SizedBox.shrink(),
-        items: _satuanOptions.map((String satuan) {
+        items: units.map((String satuan) {
           return DropdownMenuItem<String>(
             value: satuan,
             child: Text(satuan),
@@ -224,7 +244,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         }).toList(),
         onChanged: (String? newValue) {
           setState(() {
-            _selectedSatuan = newValue ?? 'kg';
+            _selectedSatuan = newValue ?? 'unit';
           });
         },
       ),
@@ -237,7 +257,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
       child: ElevatedButton.icon(
         onPressed: _tambahItem,
         icon: const Icon(Icons.add),
-        label: const Text('Tambah Bahan'),
+        label: const Text('Tambah ke Belanja'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green[600],
           foregroundColor: Colors.white,
@@ -248,7 +268,10 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   }
 
   Widget _buildItemTile(Map<String, dynamic> item, int index) {
-    double hargaPerSatuan = item['totalHarga'] / item['jumlah'];
+    double hargaPerSatuan = UniversalUnitService.calculateUnitPrice(
+      totalPrice: item['totalHarga'],
+      packageQuantity: item['jumlah'],
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -269,11 +292,11 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  '${item['jumlah']} ${item['satuan']} - ${_formatRupiah(item['totalHarga'])}',
+                  '${item['jumlah']} ${item['satuan']} - ${UniversalUnitService.formatRupiah(item['totalHarga'])}',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 Text(
-                  'Per ${item['satuan']}: ${_formatRupiah(hargaPerSatuan)}',
+                  'Per ${item['satuan']}: ${UniversalUnitService.formatRupiah(hargaPerSatuan)}',
                   style: TextStyle(
                       fontSize: 11,
                       color: Colors.green[700],
@@ -307,11 +330,11 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            'Total Variable Cost:',
+            'Total Belanja Bahan:',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           Text(
-            _formatRupiah(totalVariableCost),
+            UniversalUnitService.formatRupiah(totalVariableCost),
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.green[700],

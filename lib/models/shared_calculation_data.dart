@@ -1,5 +1,4 @@
-// File: lib/models/shared_calculation_data.dart (New)
-
+// lib/models/shared_calculation_data.dart
 import 'karyawan_data.dart';
 import '../services/operational_calculator_service.dart';
 import '../services/hpp_calculator_service.dart';
@@ -58,5 +57,81 @@ class SharedCalculationData {
   // Format rupiah menggunakan service (consistency)
   String formatRupiah(double amount) {
     return HPPCalculatorService.formatRupiah(amount);
+  }
+
+  // Convert to Map for JSON serialization
+  Map<String, dynamic> toMap() {
+    return {
+      'variableCosts': variableCosts,
+      'fixedCosts': fixedCosts,
+      'estimasiPorsi': estimasiPorsi,
+      'estimasiProduksiBulanan': estimasiProduksiBulanan,
+      'hppMurniPerPorsi': hppMurniPerPorsi,
+      'biayaVariablePerPorsi': biayaVariablePerPorsi,
+      'biayaFixedPerPorsi': biayaFixedPerPorsi,
+      'karyawan': karyawan.map((k) => k.toMap()).toList(),
+      'totalOperationalCost': totalOperationalCost,
+      'totalHargaSetelahOperational': totalHargaSetelahOperational,
+    };
+  }
+
+  // Create from Map for JSON deserialization
+  static SharedCalculationData fromMap(Map<String, dynamic> map) {
+    List<KaryawanData> karyawan = (map['karyawan'] as List?)
+            ?.map((item) => KaryawanData.fromMap(item as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    return SharedCalculationData(
+      variableCosts:
+          List<Map<String, dynamic>>.from(map['variableCosts'] ?? []),
+      fixedCosts: List<Map<String, dynamic>>.from(map['fixedCosts'] ?? []),
+      estimasiPorsi: map['estimasiPorsi']?.toDouble() ?? 1.0,
+      estimasiProduksiBulanan:
+          map['estimasiProduksiBulanan']?.toDouble() ?? 30.0,
+      hppMurniPerPorsi: map['hppMurniPerPorsi']?.toDouble() ?? 0.0,
+      biayaVariablePerPorsi: map['biayaVariablePerPorsi']?.toDouble() ?? 0.0,
+      biayaFixedPerPorsi: map['biayaFixedPerPorsi']?.toDouble() ?? 0.0,
+      karyawan: karyawan,
+      totalOperationalCost: map['totalOperationalCost']?.toDouble() ?? 0.0,
+      totalHargaSetelahOperational:
+          map['totalHargaSetelahOperational']?.toDouble() ?? 0.0,
+    );
+  }
+
+  // Create a copy with updated values
+  SharedCalculationData copyWith({
+    List<Map<String, dynamic>>? variableCosts,
+    List<Map<String, dynamic>>? fixedCosts,
+    double? estimasiPorsi,
+    double? estimasiProduksiBulanan,
+    double? hppMurniPerPorsi,
+    double? biayaVariablePerPorsi,
+    double? biayaFixedPerPorsi,
+    List<KaryawanData>? karyawan,
+    double? totalOperationalCost,
+    double? totalHargaSetelahOperational,
+  }) {
+    return SharedCalculationData(
+      variableCosts: variableCosts ?? this.variableCosts,
+      fixedCosts: fixedCosts ?? this.fixedCosts,
+      estimasiPorsi: estimasiPorsi ?? this.estimasiPorsi,
+      estimasiProduksiBulanan:
+          estimasiProduksiBulanan ?? this.estimasiProduksiBulanan,
+      hppMurniPerPorsi: hppMurniPerPorsi ?? this.hppMurniPerPorsi,
+      biayaVariablePerPorsi:
+          biayaVariablePerPorsi ?? this.biayaVariablePerPorsi,
+      biayaFixedPerPorsi: biayaFixedPerPorsi ?? this.biayaFixedPerPorsi,
+      karyawan: karyawan ?? this.karyawan,
+      totalOperationalCost: totalOperationalCost ?? this.totalOperationalCost,
+      totalHargaSetelahOperational:
+          totalHargaSetelahOperational ?? this.totalHargaSetelahOperational,
+    );
+  }
+
+  // Update calculated values
+  void updateCalculatedValues() {
+    totalOperationalCost = calculateTotalOperationalCost();
+    totalHargaSetelahOperational = calculateTotalHargaSetelahOperational();
   }
 }
