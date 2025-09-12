@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/karyawan_data.dart';
+import '../models/shared_calculation_data.dart';
 
 class OperationalCostWidget extends StatelessWidget {
   final SharedCalculationData sharedData;

@@ -1,8 +1,7 @@
 // File: lib/services/menu_calculator_service.dart
 
 import '../models/menu_model.dart';
-import '../models/karyawan_data.dart';
-import 'operational_calculator_service.dart';
+import '../models/shared_calculation_data.dart';
 import 'hpp_calculator_service.dart';
 
 class MenuCalculationResult {
@@ -102,7 +101,8 @@ class MenuCalculatorService {
     return hargaSetelahMargin - hppMurniPerMenu;
   }
 
-  /// Perhitungan lengkap untuk menu
+  /// Perhitungan lengkap untuk menu spesifik
+  /// Fokus pada racik menu (resep) sebagai unit perhitungan
   static MenuCalculationResult calculateMenuCost({
     required MenuItem menu,
     required SharedCalculationData sharedData,
@@ -115,45 +115,47 @@ class MenuCalculatorService {
             'Menu harus memiliki minimal 1 komposisi bahan');
       }
 
-      if (sharedData.hppMurniPerPorsi <= 0) {
-        return MenuCalculationResult.error(
-            'Data HPP belum tersedia. Silakan lengkapi data HPP terlebih dahulu');
-      }
-
-      // 1. Hitung biaya bahan baku menu
+      // 1. Hitung biaya bahan baku untuk menu ini (resep)
+      // Ini adalah biaya murni untuk membuat 1 porsi menu ini
       double biayaBahanBakuMenu = calculateMenuBahanBakuCost(menu.komposisi);
 
-      // 2. Hitung total biaya bahan baku dari shared data
-      double totalBiayaBahanBaku = sharedData.variableCosts
-          .fold(0.0, (sum, item) => sum + item['totalHarga']);
+      // 2. Hitung proporsi fixed cost untuk menu ini
+      // Berdasarkan kompleksitas resep (rasio biaya bahan terhadap total variable cost)
+      double totalBiayaBahanBaku = 0.0;
+      for (var item in sharedData.variableCosts) {
+        final totalHarga = item['totalHarga'];
+        if (totalHarga is num) {
+          totalBiayaBahanBaku += totalHarga.toDouble();
+        }
+      }
 
-      // 3. Hitung proporsi fixed cost untuk menu
-      double biayaFixedPerMenu = calculateFixedCostProportion(
-        biayaBahanBakuMenu: biayaBahanBakuMenu,
-        totalBiayaBahanBaku: totalBiayaBahanBaku,
-        biayaFixedPerPorsi: sharedData.biayaFixedPerPorsi,
-      );
+      double biayaFixedPerMenu = 0.0;
+      if (totalBiayaBahanBaku > 0) {
+        // Proporsi fixed cost berdasarkan kompleksitas resep
+        double proporsi = biayaBahanBakuMenu / totalBiayaBahanBaku;
+        biayaFixedPerMenu = sharedData.biayaFixedPerPorsi * proporsi;
+      }
 
-      // 4. Hitung proporsi operational cost untuk menu
+      // 3. Hitung proporsi operational cost untuk menu ini
       double operationalCostPerPorsi =
           sharedData.calculateOperationalCostPerPorsi();
-      double biayaOperationalPerMenu = calculateOperationalCostProportion(
-        biayaBahanBakuMenu: biayaBahanBakuMenu,
-        totalBiayaBahanBaku: totalBiayaBahanBaku,
-        operationalCostPerPorsi: operationalCostPerPorsi,
-      );
+      double biayaOperationalPerMenu = 0.0;
+      if (totalBiayaBahanBaku > 0) {
+        double proporsi = biayaBahanBakuMenu / totalBiayaBahanBaku;
+        biayaOperationalPerMenu = operationalCostPerPorsi * proporsi;
+      }
 
-      // 5. Hitung HPP murni per menu
+      // 4. Hitung HPP murni untuk menu ini (1 porsi)
       double hppMurniPerMenu =
           biayaBahanBakuMenu + biayaFixedPerMenu + biayaOperationalPerMenu;
 
-      // 6. Hitung harga jual dengan margin
+      // 5. Hitung harga jual dengan margin
       double hargaSetelahMargin = calculateSellingPrice(
         hppMurniPerMenu: hppMurniPerMenu,
         marginPercentage: marginPercentage,
       );
 
-      // 7. Hitung profit per menu
+      // 6. Hitung profit per menu
       double profitPerMenu = calculateProfitPerMenu(
         hargaSetelahMargin: hargaSetelahMargin,
         hppMurniPerMenu: hppMurniPerMenu,
@@ -181,15 +183,24 @@ class MenuCalculatorService {
   }
 
   /// Mendapatkan daftar ingredient yang tersedia dari variable costs
+  /// Menghitung harga per satuan dengan benar sesuai rumus: Total Biaya ÷ Jumlah Bahan
   static List<Map<String, dynamic>> getAvailableIngredients(
       List<Map<String, dynamic>> variableCosts) {
     return variableCosts.map((item) {
-      double hargaPerSatuan = item['totalHarga'] / item['jumlah'];
+      final totalHarga = item['totalHarga'];
+      final jumlah = item['jumlah'];
+
+      double hargaPerSatuan = 0.0;
+      if (totalHarga is num && jumlah is num && jumlah > 0) {
+        // Rumus: Biaya per Satuan = Total Biaya Bahan Baku ÷ Jumlah Bahan Baku
+        hargaPerSatuan = totalHarga.toDouble() / jumlah.toDouble();
+      }
+
       return {
-        'nama': item['nama'],
-        'satuan': item['satuan'],
-        'hargaPerSatuan': hargaPerSatuan,
-        'stok': item['jumlah'],
+        'nama': item['nama'] ?? '',
+        'satuan': item['satuan'] ?? '',
+        'hargaPerSatuan': hargaPerSatuan, // Sudah dihitung per satuan
+        'stok': jumlah is num ? jumlah.toDouble() : 0.0,
       };
     }).toList();
   }

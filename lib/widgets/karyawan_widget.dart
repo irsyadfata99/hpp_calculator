@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/karyawan_data.dart';
+import '../models/shared_calculation_data.dart';
 
 class KaryawanWidget extends StatefulWidget {
   final SharedCalculationData sharedData;

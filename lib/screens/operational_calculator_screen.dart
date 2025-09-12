@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/karyawan_data.dart';
+import '../models/shared_calculation_data.dart';
 import '../widgets/karyawan_widget.dart';
 import '../widgets/operational_cost_widget.dart';
 import '../widgets/total_operational_result_widget.dart';

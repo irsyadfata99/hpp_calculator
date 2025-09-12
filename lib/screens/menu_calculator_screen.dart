@@ -2,10 +2,12 @@
 
 import 'package:flutter/material.dart';
 import '../models/menu_model.dart';
-import '../models/karyawan_data.dart';
+import '../models/shared_calculation_data.dart';
 import '../services/menu_calculator_service.dart';
-import '../widgets/menu_composition_widget.dart';
-import '../widgets/menu_result_widget.dart';
+import '../widgets/menu_input_widget.dart';
+import '../widgets/menu_ingredient_selector_widget.dart';
+import '../widgets/menu_composition_list_widget.dart';
+import '../widgets/menu_calculation_result_widget.dart';
 
 class MenuCalculatorScreen extends StatefulWidget {
   final SharedCalculationData sharedData;
@@ -32,6 +34,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
   }
 
   void _hitungMenu() {
+    // Validasi input minimum untuk racik menu
     if (_namaMenu.isEmpty || _komposisiMenu.isEmpty) {
       setState(() {
         _calculationResult = null;
@@ -39,22 +42,30 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
       return;
     }
 
-    MenuItem menu = MenuItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      namaMenu: _namaMenu,
-      komposisi: _komposisiMenu,
-      createdAt: DateTime.now(),
-    );
+    try {
+      MenuItem menu = MenuItem(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        namaMenu: _namaMenu,
+        komposisi: _komposisiMenu,
+        createdAt: DateTime.now(),
+      );
 
-    MenuCalculationResult result = MenuCalculatorService.calculateMenuCost(
-      menu: menu,
-      sharedData: widget.sharedData,
-      marginPercentage: _marginPercentage,
-    );
+      // Fokus pada perhitungan racik menu (resep), tidak mempengaruhi HPP Murni
+      MenuCalculationResult result = MenuCalculatorService.calculateMenuCost(
+        menu: menu,
+        sharedData: widget.sharedData,
+        marginPercentage: _marginPercentage,
+      );
 
-    setState(() {
-      _calculationResult = result;
-    });
+      setState(() {
+        _calculationResult = result;
+      });
+    } catch (e) {
+      setState(() {
+        _calculationResult = MenuCalculationResult.error(
+            'Error dalam perhitungan menu: ${e.toString()}');
+      });
+    }
   }
 
   void _tambahKomposisi(String namaIngredient, double jumlah, String satuan,
@@ -72,7 +83,9 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
 
   void _hapusKomposisi(int index) {
     setState(() {
-      _komposisiMenu.removeAt(index);
+      if (index >= 0 && index < _komposisiMenu.length) {
+        _komposisiMenu.removeAt(index);
+      }
     });
     _hitungMenu();
   }
@@ -103,23 +116,35 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Widget 1: Input Menu dan Komposisi
-            MenuCompositionWidget(
+            // Card 1: Input Utama (Nama Menu + Margin)
+            MenuInputWidget(
               namaMenu: _namaMenu,
               marginPercentage: _marginPercentage,
-              komposisiMenu: _komposisiMenu,
-              availableIngredients: availableIngredients,
               onNamaMenuChanged: _updateNamaMenu,
               onMarginChanged: _updateMargin,
               onDataChanged: _hitungMenu,
-              onAddKomposisi: _tambahKomposisi,
-              onRemoveKomposisi: _hapusKomposisi,
             ),
 
             const SizedBox(height: 16),
 
-            // Widget 2: Hasil Perhitungan
-            MenuResultWidget(
+            // Card 2: Komposisi Menu (Dropdown Bahan + Input Jumlah + Dropdown Satuan + Tombol Tambah)
+            MenuIngredientSelectorWidget(
+              availableIngredients: availableIngredients,
+              onAddIngredient: _tambahKomposisi,
+            ),
+
+            const SizedBox(height: 16),
+
+            // Card 3: Komposisi Saat Ini (List View + Total Bahan Baku terpisah)
+            MenuCompositionListWidget(
+              komposisiMenu: _komposisiMenu,
+              onRemoveItem: _hapusKomposisi,
+            ),
+
+            const SizedBox(height: 16),
+
+            // Card 4: Perhitungan Menu (HPP + Harga Jual + Profit)
+            MenuCalculationResultWidget(
               namaMenu: _namaMenu,
               calculationResult: _calculationResult,
             ),

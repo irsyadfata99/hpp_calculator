@@ -2,9 +2,9 @@
 
 class MenuComposition {
   final String namaIngredient;
-  final double jumlahDipakai;
+  final double jumlahDipakai; // Jumlah yang digunakan per porsi
   final String satuan;
-  final double hargaPerSatuan; // Diambil dari variable costs
+  final double hargaPerSatuan; // Sudah dihitung: Total Biaya ÷ Jumlah Bahan
 
   MenuComposition({
     required this.namaIngredient,
@@ -13,6 +13,8 @@ class MenuComposition {
     required this.hargaPerSatuan,
   });
 
+  /// Rumus sesuai gambar: Biaya per Satuan × Jumlah yang Dipakai per Porsi
+  /// Contoh: Rp 5.000 per kg × 0.5 kg = Rp 2.500
   double get totalCost => jumlahDipakai * hargaPerSatuan;
 
   Map<String, dynamic> toMap() {
