@@ -1,4 +1,7 @@
-// File: lib/services/business_type_service.dart - Business Type Service
+// File: lib/services/business_type_service.dart - FIXED VERSION
+
+import '../models/business_type.dart';
+import '../utils/constants.dart';
 
 class BusinessTypeService {
   static List<BusinessType> getAllBusinessTypes() {
