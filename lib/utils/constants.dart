@@ -7,9 +7,9 @@ class AppConstants {
       'Aplikasi sederhana untuk menghitung HPP (Harga Pokok Penjualan) khusus UMKM';
 
   // Validation Constants
-  static const double maxPrice = 999999999.0;
+  static const double maxPrice = 50000000.0;
   static const double minPrice = 0.01;
-  static const double maxQuantity = 99999.0;
+  static const double maxQuantity = 5000.0;
   static const double minQuantity = 0.01;
   static const double maxPercentage = 100.0;
   static const double minPercentage = 0.01;
