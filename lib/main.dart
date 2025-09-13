@@ -1,4 +1,4 @@
-// lib/main.dart - COMPLETE PROVIDER MIGRATION
+// lib/main.dart - FIXED PROVIDER MIGRATION
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -83,12 +83,20 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           // Initialize Operational Provider and setup communication with HPP
           debugPrint('👥 Initializing Operational Provider...');
           await operationalProvider.initializeFromStorage();
-          operationalProvider.updateSharedData(hppProvider.data);
+
+          // FIXED: Wait for HPP to be ready before updating operational
+          if (hppProvider.data.estimasiPorsi > 0) {
+            operationalProvider.updateSharedData(hppProvider.data);
+          }
 
           // Initialize Menu Provider and setup communication with HPP
           debugPrint('🍽️ Initializing Menu Provider...');
           await menuProvider.initializeFromStorage();
-          menuProvider.updateSharedData(hppProvider.data);
+
+          // FIXED: Wait for HPP to be ready before updating menu
+          if (hppProvider.data.estimasiPorsi > 0) {
+            menuProvider.updateSharedData(hppProvider.data);
+          }
 
           // Setup provider-to-provider listeners
           _setupProviderCommunication(
@@ -127,8 +135,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  /// Setup provider-to-provider communication
-  /// HPP Provider is the primary data source, others depend on it
+  /// FIXED: Setup provider-to-provider communication with proper debouncing
   void _setupProviderCommunication(
     HPPProvider hppProvider,
     OperationalProvider operationalProvider,
@@ -136,15 +143,18 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
   ) {
     debugPrint('🔗 Setting up provider-to-provider communication...');
 
-    // Listen to HPP changes and update dependent providers
+    // FIXED: Add listener with debouncing to prevent infinite loops
     hppProvider.addListener(() {
-      // Update operational provider when HPP data changes
-      operationalProvider.updateSharedData(hppProvider.data);
-
-      // Update menu provider when HPP data changes
-      menuProvider.updateSharedData(hppProvider.data);
-
-      debugPrint('🔄 Provider communication: HPP updated dependent providers');
+      // Only update if providers are initialized and data has actually changed
+      if (_isInitialized && hppProvider.data.estimasiPorsi > 0) {
+        // Update operational provider when HPP data changes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            operationalProvider.updateSharedData(hppProvider.data);
+            menuProvider.updateSharedData(hppProvider.data);
+          }
+        });
+      }
     });
 
     debugPrint('✅ Provider communication setup complete');

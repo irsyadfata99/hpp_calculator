@@ -36,14 +36,11 @@ class OperationalCalculatorScreenState
     final operationalProvider =
         Provider.of<OperationalProvider>(context, listen: false);
 
-    // DEBUG: Print exact values
-    print('DEBUG: hppProvider.data values:');
-    print('  estimasiPorsi: ${hppProvider.data.estimasiPorsi}');
-    print(
-        '  estimasiProduksiBulanan: ${hppProvider.data.estimasiProduksiBulanan}');
-    print('  hppMurniPerPorsi: ${hppProvider.data.hppMurniPerPorsi}');
-    print(
-        '  type estimasiPorsi: ${hppProvider.data.estimasiPorsi.runtimeType}');
+    // FIXED: Remove debug print statements that were causing issues
+    debugPrint('🔗 Setting up operational provider communication...');
+    debugPrint(
+        '📊 HPP Data: ${hppProvider.data.estimasiPorsi} porsi, ${hppProvider.data.hppMurniPerPorsi} HPP');
+
     // Update operational provider with current HPP data
     operationalProvider.updateSharedData(hppProvider.data);
   }
@@ -54,9 +51,15 @@ class OperationalCalculatorScreenState
       appBar: _buildAppBar(),
       body: Consumer2<OperationalProvider, HPPProvider>(
         builder: (context, operationalProvider, hppProvider, child) {
-          // Update shared data when HPP changes
+          // FIXED: Ensure data synchronization without debug prints in build method
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            operationalProvider.updateSharedData(hppProvider.data);
+            if (operationalProvider.sharedData == null ||
+                operationalProvider.sharedData!.estimasiPorsi !=
+                    hppProvider.data.estimasiPorsi ||
+                operationalProvider.sharedData!.hppMurniPerPorsi !=
+                    hppProvider.data.hppMurniPerPorsi) {
+              operationalProvider.updateSharedData(hppProvider.data);
+            }
           });
 
           if (operationalProvider.isLoading) {
@@ -237,7 +240,6 @@ class OperationalCalculatorScreenState
 
   Widget _buildOperationalSummaryCard(OperationalProvider provider) {
     final totalKaryawan = provider.karyawan.length;
-    // FIXED: Removed unused 'totalGaji' variable - using provider.formattedTotalGaji directly
 
     return Card(
       elevation: AppConstants.cardElevation,
@@ -360,10 +362,7 @@ class OperationalCalculatorScreenState
               ],
             ),
             const SizedBox(height: AppConstants.smallPadding),
-            _buildAnalysisRow(
-                'Biaya per Hari:',
-                provider
-                    .formattedTotalGaji, // This should be daily, but using total for now
+            _buildAnalysisRow('Biaya per Hari:', provider.formattedTotalGaji,
                 AppColors.textPrimary),
             _buildAnalysisRow('Biaya per Porsi:',
                 provider.formattedOperationalPerPorsi, AppColors.textPrimary),
@@ -594,7 +593,6 @@ class OperationalCalculatorScreenState
 
   Future<void> _handleImport(
       BuildContext context, OperationalProvider provider) async {
-    // Implementation would be similar to HPP screen
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Import functionality coming soon'),

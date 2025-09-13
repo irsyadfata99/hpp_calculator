@@ -54,26 +54,36 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // SHARED DATA INTEGRATION
+  // SHARED DATA INTEGRATION - FIXED
   // ===============================================
 
   void updateSharedData(SharedCalculationData newSharedData) {
-    print('DEBUG: Received data in updateSharedData:');
-    print(
-        '  estimasiPorsi: ${newSharedData.estimasiPorsi} (${newSharedData.estimasiPorsi.runtimeType})');
-    print(
-        '  hppMurniPerPorsi: ${newSharedData.hppMurniPerPorsi} (${newSharedData.hppMurniPerPorsi.runtimeType})');
+    debugPrint('🔄 OperationalProvider.updateSharedData called');
 
-    // Safety check
-    if (newSharedData.estimasiPorsi == null ||
-        newSharedData.estimasiPorsi == 0) {
-      print('WARNING: estimasiPorsi is null or zero, using default');
-      newSharedData = newSharedData.copyWith(
-        estimasiPorsi: 100.0, // default value
-      );
-    }
+    // FIXED: Create a properly typed copy with explicit double conversion
+    _sharedData = SharedCalculationData(
+      variableCosts: newSharedData.variableCosts,
+      fixedCosts: newSharedData.fixedCosts,
+      estimasiPorsi: newSharedData.estimasiPorsi.toDouble(),
+      estimasiProduksiBulanan: newSharedData.estimasiProduksiBulanan.toDouble(),
+      hppMurniPerPorsi: newSharedData.hppMurniPerPorsi.toDouble(),
+      biayaVariablePerPorsi: newSharedData.biayaVariablePerPorsi.toDouble(),
+      biayaFixedPerPorsi: newSharedData.biayaFixedPerPorsi.toDouble(),
+      karyawan: _karyawan, // Use local karyawan data
+      totalOperationalCost: newSharedData.totalOperationalCost.toDouble(),
+      totalHargaSetelahOperational:
+          newSharedData.totalHargaSetelahOperational.toDouble(),
+    );
 
-    _sharedData = newSharedData;
+    debugPrint('📊 Updated shared data values:');
+    debugPrint(
+        '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
+    debugPrint(
+        '  estimasiProduksiBulanan: ${_sharedData!.estimasiProduksiBulanan} (${_sharedData!.estimasiProduksiBulanan.runtimeType})');
+    debugPrint(
+        '  hppMurniPerPorsi: ${_sharedData!.hppMurniPerPorsi} (${_sharedData!.hppMurniPerPorsi.runtimeType})');
+    debugPrint('  karyawan count: ${_karyawan.length}');
+
     _recalculateOperational();
   }
 
@@ -122,11 +132,17 @@ class OperationalProvider with ChangeNotifier {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: gaji,
+        gajiBulanan: gaji.toDouble(), // FIXED: Ensure double
         createdAt: DateTime.now(),
       );
 
       _karyawan = [..._karyawan, newKaryawan];
+
+      // FIXED: Update shared data with new karyawan list
+      if (_sharedData != null) {
+        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
+      }
+
       await _recalculateOperational();
       _setError(null);
       _scheduleAutoSave();
@@ -171,13 +187,18 @@ class OperationalProvider with ChangeNotifier {
         id: _karyawan[index].id,
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: gaji,
+        gajiBulanan: gaji.toDouble(), // FIXED: Ensure double
         createdAt: _karyawan[index].createdAt,
       );
 
       final newList = [..._karyawan];
       newList[index] = updatedKaryawan;
       _karyawan = newList;
+
+      // FIXED: Update shared data with new karyawan list
+      if (_sharedData != null) {
+        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
+      }
 
       await _recalculateOperational();
       _setError(null);
@@ -203,6 +224,11 @@ class OperationalProvider with ChangeNotifier {
       newList.removeAt(index);
       _karyawan = newList;
 
+      // FIXED: Update shared data with new karyawan list
+      if (_sharedData != null) {
+        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
+      }
+
       await _recalculateOperational();
       _setError(null);
       _scheduleAutoSave();
@@ -218,6 +244,12 @@ class OperationalProvider with ChangeNotifier {
     _setLoading(true);
     try {
       _karyawan = [];
+
+      // FIXED: Update shared data with empty karyawan list
+      if (_sharedData != null) {
+        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
+      }
+
       await _recalculateOperational();
       _setError(null);
       _scheduleAutoSave();
@@ -230,15 +262,27 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // CORE CALCULATION METHOD
+  // CORE CALCULATION METHOD - FIXED
   // ===============================================
 
   Future<void> _recalculateOperational() async {
+    debugPrint('🧮 OperationalProvider._recalculateOperational called');
+
     if (_sharedData == null) {
+      debugPrint('⚠️ SharedData is null, skipping calculation');
       _lastCalculationResult = null;
       notifyListeners();
       return;
     }
+
+    debugPrint('📊 Current SharedData values:');
+    debugPrint(
+        '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
+    debugPrint(
+        '  estimasiProduksiBulanan: ${_sharedData!.estimasiProduksiBulanan} (${_sharedData!.estimasiProduksiBulanan.runtimeType})');
+    debugPrint(
+        '  hppMurniPerPorsi: ${_sharedData!.hppMurniPerPorsi} (${_sharedData!.hppMurniPerPorsi.runtimeType})');
+    debugPrint('  karyawan count: ${_karyawan.length}');
 
     try {
       final result = OperationalCalculatorService.calculateOperationalCost(
@@ -248,21 +292,33 @@ class OperationalProvider with ChangeNotifier {
         estimasiProduksiBulanan: _sharedData!.estimasiProduksiBulanan,
       );
 
+      debugPrint('✅ Calculation completed:');
+      debugPrint('  result.isValid: ${result.isValid}');
+      debugPrint('  result.totalGajiBulanan: ${result.totalGajiBulanan}');
+      debugPrint(
+          '  result.operationalCostPerPorsi: ${result.operationalCostPerPorsi}');
+
       _lastCalculationResult = result;
 
       if (result.isValid) {
-        // Update shared data with operational results
+        // FIXED: Update shared data with operational results using proper double conversion
         _sharedData = _sharedData!.copyWith(
           karyawan: _karyawan,
-          totalOperationalCost: result.totalGajiBulanan,
-          totalHargaSetelahOperational: result.totalHargaSetelahOperational,
+          totalOperationalCost: result.totalGajiBulanan.toDouble(),
+          totalHargaSetelahOperational:
+              result.totalHargaSetelahOperational.toDouble(),
         );
+        debugPrint('✅ SharedData updated with calculation results');
+      } else {
+        debugPrint('❌ Calculation failed: ${result.errorMessage}');
       }
 
       notifyListeners();
     } catch (e) {
       _lastCalculationResult = null;
       debugPrint('❌ Operational Calculation error: $e');
+      _setError('Calculation error: ${e.toString()}');
+      notifyListeners();
     }
   }
 
@@ -381,6 +437,17 @@ class OperationalProvider with ChangeNotifier {
     _lastCalculationResult = null;
     _errorMessage = null;
     _isLoading = false;
+
+    // FIXED: Update shared data when resetting
+    if (_sharedData != null) {
+      _sharedData = _sharedData!.copyWith(
+        karyawan: _karyawan,
+        totalOperationalCost: 0.0,
+        totalHargaSetelahOperational:
+            _sharedData!.hppMurniPerPorsi, // Reset to HPP only
+      );
+    }
+
     _scheduleAutoSave();
     notifyListeners();
   }

@@ -1,4 +1,4 @@
-// lib/models/shared_calculation_data.dart (Full Integration)
+// lib/models/shared_calculation_data.dart - FIXED VERSION
 import 'karyawan_data.dart';
 import '../services/operational_calculator_service.dart';
 import '../utils/formatters.dart';
@@ -22,9 +22,8 @@ class SharedCalculationData {
   SharedCalculationData({
     this.variableCosts = const [],
     this.fixedCosts = const [],
-    this.estimasiPorsi = AppConstants.defaultEstimasiPorsi, // Using constants
-    this.estimasiProduksiBulanan =
-        AppConstants.defaultEstimasiProduksi, // Using constants
+    this.estimasiPorsi = AppConstants.defaultEstimasiPorsi,
+    this.estimasiProduksiBulanan = AppConstants.defaultEstimasiProduksi,
     this.hppMurniPerPorsi = 0.0,
     this.biayaVariablePerPorsi = 0.0,
     this.biayaFixedPerPorsi = 0.0,
@@ -89,7 +88,7 @@ class SharedCalculationData {
   // Convert to Map for JSON serialization
   Map<String, dynamic> toMap() {
     return {
-      'version': AppConstants.appVersion, // Using constants
+      'version': AppConstants.appVersion,
       'variableCosts': variableCosts,
       'fixedCosts': fixedCosts,
       'estimasiPorsi': estimasiPorsi,
@@ -104,7 +103,7 @@ class SharedCalculationData {
     };
   }
 
-  // Create from Map for JSON deserialization
+  // FIXED: Better type conversion with explicit double casting
   static SharedCalculationData fromMap(Map<String, dynamic> map) {
     List<KaryawanData> karyawan = (map['karyawan'] as List?)
             ?.map((item) => KaryawanData.fromMap(item as Map<String, dynamic>))
@@ -115,21 +114,36 @@ class SharedCalculationData {
       variableCosts:
           List<Map<String, dynamic>>.from(map['variableCosts'] ?? []),
       fixedCosts: List<Map<String, dynamic>>.from(map['fixedCosts'] ?? []),
-      estimasiPorsi:
-          map['estimasiPorsi']?.toDouble() ?? AppConstants.defaultEstimasiPorsi,
-      estimasiProduksiBulanan: map['estimasiProduksiBulanan']?.toDouble() ??
-          AppConstants.defaultEstimasiProduksi,
-      hppMurniPerPorsi: map['hppMurniPerPorsi']?.toDouble() ?? 0.0,
-      biayaVariablePerPorsi: map['biayaVariablePerPorsi']?.toDouble() ?? 0.0,
-      biayaFixedPerPorsi: map['biayaFixedPerPorsi']?.toDouble() ?? 0.0,
+      estimasiPorsi: _safeConvertToDouble(map['estimasiPorsi']) ??
+          AppConstants.defaultEstimasiPorsi,
+      estimasiProduksiBulanan:
+          _safeConvertToDouble(map['estimasiProduksiBulanan']) ??
+              AppConstants.defaultEstimasiProduksi,
+      hppMurniPerPorsi: _safeConvertToDouble(map['hppMurniPerPorsi']) ?? 0.0,
+      biayaVariablePerPorsi:
+          _safeConvertToDouble(map['biayaVariablePerPorsi']) ?? 0.0,
+      biayaFixedPerPorsi:
+          _safeConvertToDouble(map['biayaFixedPerPorsi']) ?? 0.0,
       karyawan: karyawan,
-      totalOperationalCost: map['totalOperationalCost']?.toDouble() ?? 0.0,
+      totalOperationalCost:
+          _safeConvertToDouble(map['totalOperationalCost']) ?? 0.0,
       totalHargaSetelahOperational:
-          map['totalHargaSetelahOperational']?.toDouble() ?? 0.0,
+          _safeConvertToDouble(map['totalHargaSetelahOperational']) ?? 0.0,
     );
   }
 
-  // Create a copy with updated values
+  // FIXED: Safe conversion method to handle int/double conversion
+  static double? _safeConvertToDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value);
+    }
+    return null;
+  }
+
+  // Create a copy with updated values - FIXED: Ensure all params are double
   SharedCalculationData copyWith({
     List<Map<String, dynamic>>? variableCosts,
     List<Map<String, dynamic>>? fixedCosts,
@@ -142,20 +156,23 @@ class SharedCalculationData {
     double? totalOperationalCost,
     double? totalHargaSetelahOperational,
   }) {
+    // FIXED: Ensure double type conversion
     return SharedCalculationData(
       variableCosts: variableCosts ?? this.variableCosts,
       fixedCosts: fixedCosts ?? this.fixedCosts,
-      estimasiPorsi: estimasiPorsi ?? this.estimasiPorsi,
+      estimasiPorsi: estimasiPorsi?.toDouble() ?? this.estimasiPorsi,
       estimasiProduksiBulanan:
-          estimasiProduksiBulanan ?? this.estimasiProduksiBulanan,
-      hppMurniPerPorsi: hppMurniPerPorsi ?? this.hppMurniPerPorsi,
+          estimasiProduksiBulanan?.toDouble() ?? this.estimasiProduksiBulanan,
+      hppMurniPerPorsi: hppMurniPerPorsi?.toDouble() ?? this.hppMurniPerPorsi,
       biayaVariablePerPorsi:
-          biayaVariablePerPorsi ?? this.biayaVariablePerPorsi,
-      biayaFixedPerPorsi: biayaFixedPerPorsi ?? this.biayaFixedPerPorsi,
+          biayaVariablePerPorsi?.toDouble() ?? this.biayaVariablePerPorsi,
+      biayaFixedPerPorsi:
+          biayaFixedPerPorsi?.toDouble() ?? this.biayaFixedPerPorsi,
       karyawan: karyawan ?? this.karyawan,
-      totalOperationalCost: totalOperationalCost ?? this.totalOperationalCost,
-      totalHargaSetelahOperational:
-          totalHargaSetelahOperational ?? this.totalHargaSetelahOperational,
+      totalOperationalCost:
+          totalOperationalCost?.toDouble() ?? this.totalOperationalCost,
+      totalHargaSetelahOperational: totalHargaSetelahOperational?.toDouble() ??
+          this.totalHargaSetelahOperational,
     );
   }
 
