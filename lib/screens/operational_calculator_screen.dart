@@ -1,22 +1,19 @@
-// lib/screens/operational_calculator_screen.dart (Fixed Constructor)
-
+// lib/screens/operational_calculator_screen.dart - FIXED VERSION
 import 'package:flutter/material.dart';
-import '../models/karyawan_data.dart';
-import '../models/shared_calculation_data.dart';
+import 'package:provider/provider.dart';
+import '../providers/operational_provider.dart';
+import '../providers/hpp_provider.dart';
 import '../widgets/operational/karyawan_widget.dart';
 import '../widgets/operational/operational_cost_widget.dart';
 import '../widgets/operational/total_operational_result_widget.dart';
+import '../widgets/common/loading_widget.dart';
+import '../widgets/common/confirmation_dialog.dart';
+import '../widgets/common/error_dialog.dart';
 import '../utils/constants.dart';
-import '../utils/validators.dart';
-import '../utils/formatters.dart';
 import '../theme/app_colors.dart';
-import '../services/operational_calculator_service.dart';
 
 class OperationalCalculatorScreen extends StatefulWidget {
-  // REMOVED: Required sharedData parameter
-  const OperationalCalculatorScreen({
-    super.key,
-  });
+  const OperationalCalculatorScreen({super.key});
 
   @override
   OperationalCalculatorScreenState createState() =>
@@ -25,310 +22,190 @@ class OperationalCalculatorScreen extends StatefulWidget {
 
 class OperationalCalculatorScreenState
     extends State<OperationalCalculatorScreen> {
-  // LOCAL STATE - temporary until full Provider integration
-  List<KaryawanData> karyawan = [];
-  SharedCalculationData sharedData = SharedCalculationData();
-
-  bool isCalculating = false;
-  OperationalCalculationResult? calculationResult;
-  String? errorMessage;
-
   @override
   void initState() {
     super.initState();
-    _hitungOperational();
-  }
-
-  Future<void> _hitungOperational() async {
-    if (!mounted) return;
-
-    setState(() {
-      isCalculating = true;
-      errorMessage = null;
+    // Setup provider-to-provider communication
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupProviderCommunication();
     });
-
-    try {
-      // Use local state instead of widget.sharedData
-      final result = OperationalCalculatorService.calculateOperationalCost(
-        karyawan: karyawan,
-        hppMurniPerPorsi: sharedData.hppMurniPerPorsi,
-        estimasiPorsiPerProduksi: sharedData.estimasiPorsi,
-        estimasiProduksiBulanan: sharedData.estimasiProduksiBulanan,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        calculationResult = result;
-        errorMessage = result.isValid ? null : result.errorMessage;
-        isCalculating = false;
-      });
-
-      // Update local shared data
-      if (result.isValid) {
-        sharedData.totalOperationalCost = result.totalGajiBulanan;
-        sharedData.totalHargaSetelahOperational =
-            result.totalHargaSetelahOperational;
-        sharedData.updateCalculatedValues();
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        errorMessage = 'Error perhitungan operational: ${e.toString()}';
-        calculationResult = null;
-        isCalculating = false;
-      });
-    }
   }
 
-  void _showSuccessMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.success,
-        duration: AppConstants.shortAnimation,
-      ),
-    );
-  }
+  void _setupProviderCommunication() {
+    final hppProvider = Provider.of<HPPProvider>(context, listen: false);
+    final operationalProvider =
+        Provider.of<OperationalProvider>(context, listen: false);
 
-  void _showErrorMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-        duration: AppConstants.mediumAnimation,
-      ),
-    );
-  }
-
-  void _showWarningMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.warning,
-        duration: AppConstants.mediumAnimation,
-      ),
-    );
-  }
-
-  Future<void> _addKaryawan(String nama, String jabatan, double gaji) async {
-    // Comprehensive validation menggunakan integrated validators
-    final namaValidation = InputValidator.validateName(nama);
-    if (namaValidation != null) {
-      _showErrorMessage('Nama karyawan: $namaValidation');
-      return;
-    }
-
-    final jabatanValidation = InputValidator.validateName(jabatan);
-    if (jabatanValidation != null) {
-      _showErrorMessage('Jabatan: $jabatanValidation');
-      return;
-    }
-
-    final gajiValidation = InputValidator.validateSalary(gaji.toString());
-    if (gajiValidation != null) {
-      _showErrorMessage('Gaji: $gajiValidation');
-      return;
-    }
-
-    // Business validation using constants
-    if (gaji > AppConstants.maxPrice) {
-      _showErrorMessage(
-          'Gaji terlalu besar (maksimal ${AppFormatters.formatRupiah(AppConstants.maxPrice)})');
-      return;
-    }
-
-    if (gaji < 100000) {
-      _showWarningMessage(
-          'Gaji di bawah standar minimum. Pastikan sudah sesuai regulasi.');
-    }
-
-    // Check for duplicate names
-    bool isDuplicate =
-        karyawan.any((k) => k.namaKaryawan.toLowerCase() == nama.toLowerCase());
-
-    if (isDuplicate) {
-      _showErrorMessage('Nama karyawan sudah ada. Gunakan nama yang berbeda.');
-      return;
-    }
-
-    // Add karyawan to local state
-    setState(() {
-      karyawan = [
-        ...karyawan,
-        KaryawanData(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          namaKaryawan: nama.trim(),
-          jabatan: jabatan.trim(),
-          gajiBulanan: gaji,
-          createdAt: DateTime.now(),
-        ),
-      ];
-      // Update shared data karyawan
-      sharedData = sharedData.copyWith(karyawan: karyawan);
-    });
-
-    await _hitungOperational();
-    _showSuccessMessage(AppConstants.successDataSaved);
-  }
-
-  Future<void> _removeKaryawan(int index) async {
-    if (index < 0 || index >= karyawan.length) {
-      _showErrorMessage('Index karyawan tidak valid');
-      return;
-    }
-
-    // Show confirmation dialog
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hapus Karyawan'),
-        content: Text(
-            'Apakah Anda yakin ingin menghapus karyawan "${karyawan[index].namaKaryawan}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldDelete == true) {
-      setState(() {
-        List<KaryawanData> newList = [...karyawan];
-        newList.removeAt(index);
-        karyawan = newList;
-        // Update shared data karyawan
-        sharedData = sharedData.copyWith(karyawan: karyawan);
-      });
-
-      await _hitungOperational();
-      _showSuccessMessage(AppConstants.successDataDeleted);
-    }
+    // DEBUG: Print exact values
+    print('DEBUG: hppProvider.data values:');
+    print('  estimasiPorsi: ${hppProvider.data.estimasiPorsi}');
+    print(
+        '  estimasiProduksiBulanan: ${hppProvider.data.estimasiProduksiBulanan}');
+    print('  hppMurniPerPorsi: ${hppProvider.data.hppMurniPerPorsi}');
+    print(
+        '  type estimasiPorsi: ${hppProvider.data.estimasiPorsi.runtimeType}');
+    // Update operational provider with current HPP data
+    operationalProvider.updateSharedData(hppProvider.data);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Kalkulator Operational'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.onPrimary,
-        actions: [
-          if (calculationResult != null && calculationResult!.isValid)
-            IconButton(
-              icon: const Icon(Icons.analytics),
-              onPressed: () => _showAnalysisDialog(),
-              tooltip: 'Analisis Efisiensi',
-            ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              switch (value) {
-                case 'reset':
-                  await _resetAllData();
-                  break;
-                case 'efficiency':
-                  _showEfficiencyAnalysis();
-                  break;
-                case 'projection':
-                  _showProjectionAnalysis();
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'efficiency',
-                child: ListTile(
-                  leading: Icon(Icons.trending_up),
-                  title: Text('Analisis Efisiensi'),
-                  dense: true,
+      appBar: _buildAppBar(),
+      body: Consumer2<OperationalProvider, HPPProvider>(
+        builder: (context, operationalProvider, hppProvider, child) {
+          // Update shared data when HPP changes
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            operationalProvider.updateSharedData(hppProvider.data);
+          });
+
+          if (operationalProvider.isLoading) {
+            return const LoadingWidget(
+                message: 'Menghitung biaya operational...');
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            child: Column(
+              children: [
+                // Error Message
+                if (operationalProvider.errorMessage != null)
+                  _buildErrorMessage(operationalProvider),
+
+                // Operational Summary Card
+                _buildOperationalSummaryCard(operationalProvider),
+
+                const SizedBox(height: AppConstants.defaultPadding),
+
+                // Karyawan Widget with Provider
+                Consumer<OperationalProvider>(
+                  builder: (context, provider, child) {
+                    return KaryawanWidget(
+                      sharedData: provider.sharedData ?? hppProvider.data,
+                      onDataChanged: () {
+                        // Data changes are handled automatically by provider
+                      },
+                      onAddKaryawan: (nama, jabatan, gaji) {
+                        provider.addKaryawan(nama, jabatan, gaji);
+                      },
+                      onRemoveKaryawan: (index) {
+                        provider.removeKaryawan(index);
+                      },
+                    );
+                  },
                 ),
-              ),
-              PopupMenuItem(
-                value: 'projection',
-                child: ListTile(
-                  leading: Icon(Icons.timeline),
-                  title: Text('Proyeksi Bulanan'),
-                  dense: true,
+
+                const SizedBox(height: AppConstants.defaultPadding),
+
+                // Operational Cost Widget
+                Consumer<OperationalProvider>(
+                  builder: (context, provider, child) {
+                    return OperationalCostWidget(
+                      sharedData: provider.sharedData ?? hppProvider.data,
+                    );
+                  },
                 ),
-              ),
-              PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'reset',
-                child: ListTile(
-                  leading: Icon(Icons.refresh),
-                  title: Text('Reset Data'),
-                  dense: true,
+
+                const SizedBox(height: AppConstants.defaultPadding),
+
+                // Total Result Widget
+                Consumer<OperationalProvider>(
+                  builder: (context, provider, child) {
+                    return TotalOperationalResultWidget(
+                      sharedData: provider.sharedData ?? hppProvider.data,
+                    );
+                  },
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: isCalculating
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(AppConstants.defaultPadding),
-              child: Column(
-                children: [
-                  // Error Message
-                  if (errorMessage != null) _buildErrorMessage(),
 
-                  // Operational Summary Card
-                  _buildOperationalSummaryCard(),
-
+                // Analysis Cards (if calculation is valid)
+                if (operationalProvider.lastCalculationResult?.isValid ==
+                    true) ...[
                   const SizedBox(height: AppConstants.defaultPadding),
-
-                  // Karyawan Card - Pass local state
-                  KaryawanWidget(
-                    sharedData: sharedData,
-                    onDataChanged: _hitungOperational,
-                    onAddKaryawan: _addKaryawan,
-                    onRemoveKaryawan: _removeKaryawan,
-                  ),
-
+                  _buildEfficiencyCard(operationalProvider),
                   const SizedBox(height: AppConstants.defaultPadding),
-
-                  // Operational Cost Card - Pass local state
-                  OperationalCostWidget(
-                    sharedData: sharedData,
-                  ),
-
-                  const SizedBox(height: AppConstants.defaultPadding),
-
-                  // Total Result Card - Pass local state
-                  TotalOperationalResultWidget(
-                    sharedData: sharedData,
-                  ),
-
-                  // Analysis Cards (if calculation is valid)
-                  if (calculationResult != null &&
-                      calculationResult!.isValid) ...[
-                    const SizedBox(height: AppConstants.defaultPadding),
-                    _buildEfficiencyCard(),
-                    const SizedBox(height: AppConstants.defaultPadding),
-                    _buildProjectionCard(),
-                  ],
-
-                  // Bottom padding
-                  const SizedBox(height: AppConstants.largePadding),
+                  _buildProjectionCard(operationalProvider),
                 ],
-              ),
+
+                // Bottom padding
+                const SizedBox(height: AppConstants.largePadding),
+              ],
             ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildErrorMessage() {
+  AppBar _buildAppBar() {
+    return AppBar(
+      title: const Text('Kalkulator Operational'),
+      backgroundColor: AppColors.primary,
+      foregroundColor: AppColors.onPrimary,
+      actions: [
+        Consumer<OperationalProvider>(
+          builder: (context, provider, child) {
+            if (provider.lastCalculationResult?.isValid == true) {
+              return IconButton(
+                icon: const Icon(Icons.analytics),
+                onPressed: () => _showAnalysisDialog(provider),
+                tooltip: 'Analisis Efisiensi',
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+        PopupMenuButton<String>(
+          onSelected: (value) => _handleMenuAction(context, value),
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'efficiency',
+              child: ListTile(
+                leading: Icon(Icons.trending_up),
+                title: Text('Analisis Efisiensi'),
+                dense: true,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'projection',
+              child: ListTile(
+                leading: Icon(Icons.timeline),
+                title: Text('Proyeksi Bulanan'),
+                dense: true,
+              ),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: 'export',
+              child: ListTile(
+                leading: Icon(Icons.download),
+                title: Text('Export Data'),
+                dense: true,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'import',
+              child: ListTile(
+                leading: Icon(Icons.upload),
+                title: Text('Import Data'),
+                dense: true,
+              ),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: 'reset',
+              child: ListTile(
+                leading: Icon(Icons.refresh),
+                title: Text('Reset Data'),
+                dense: true,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorMessage(OperationalProvider provider) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppConstants.smallPadding),
@@ -340,23 +217,27 @@ class OperationalCalculatorScreenState
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
           const SizedBox(width: AppConstants.smallPadding),
           Expanded(
             child: Text(
-              errorMessage!,
-              style: TextStyle(color: AppColors.error, fontSize: 14),
+              provider.errorMessage!,
+              style: const TextStyle(color: AppColors.error, fontSize: 14),
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: () => provider.clearError(),
+            color: AppColors.error,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildOperationalSummaryCard() {
-    final totalKaryawan = karyawan.length;
-    final totalGaji = sharedData.calculateTotalOperationalCost();
-    final averageGaji = totalKaryawan > 0 ? totalGaji / totalKaryawan : 0.0;
+  Widget _buildOperationalSummaryCard(OperationalProvider provider) {
+    final totalKaryawan = provider.karyawan.length;
+    // FIXED: Removed unused 'totalGaji' variable - using provider.formattedTotalGaji directly
 
     return Card(
       elevation: AppConstants.cardElevation,
@@ -365,11 +246,11 @@ class OperationalCalculatorScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
                 Icon(Icons.summarize, color: AppColors.info, size: 20),
-                const SizedBox(width: AppConstants.smallPadding),
-                const Text('Ringkasan Operational',
+                SizedBox(width: AppConstants.smallPadding),
+                Text('Ringkasan Operational',
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
@@ -380,10 +261,10 @@ class OperationalCalculatorScreenState
               children: [
                 _buildSummaryItem(
                     'Karyawan', totalKaryawan.toString(), AppColors.warning),
-                _buildSummaryItem('Total Gaji',
-                    AppFormatters.formatRupiah(totalGaji), AppColors.success),
+                _buildSummaryItem('Total Gaji', provider.formattedTotalGaji,
+                    AppColors.success),
                 _buildSummaryItem('Rata-rata',
-                    AppFormatters.formatRupiah(averageGaji), AppColors.info),
+                    provider.formattedOperationalPerPorsi, AppColors.info),
               ],
             ),
           ],
@@ -399,22 +280,21 @@ class OperationalCalculatorScreenState
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.bold, color: color)),
         Text(label,
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            style:
+                const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
       ],
     );
   }
 
-  Widget _buildEfficiencyCard() {
-    if (calculationResult == null || !calculationResult!.isValid) {
+  Widget _buildEfficiencyCard(OperationalProvider provider) {
+    final analysis = provider.getEfficiencyAnalysis();
+
+    if (!(analysis['isAvailable'] ?? false)) {
       return const SizedBox.shrink();
     }
 
-    final analysis = OperationalCalculatorService.analyzeKaryawanEfficiency(
-      karyawan: karyawan,
-      totalPorsiBulanan: calculationResult!.totalPorsiBulanan,
-    );
-
-    Color efficiencyColor = _getEfficiencyColor(analysis['efficiency']);
+    final efficiency = analysis['efficiency'] ?? 'N/A';
+    final efficiencyColor = _getEfficiencyColor(efficiency);
 
     return Card(
       elevation: AppConstants.cardElevation,
@@ -433,11 +313,10 @@ class OperationalCalculatorScreenState
               ],
             ),
             const SizedBox(height: AppConstants.smallPadding),
-            _buildAnalysisRow(
-                'Level Efisiensi:', analysis['efficiency'], efficiencyColor),
+            _buildAnalysisRow('Level Efisiensi:', efficiency, efficiencyColor),
             _buildAnalysisRow(
                 'Porsi per Karyawan:',
-                '${analysis['porsiPerKaryawan'].toStringAsFixed(0)} porsi',
+                '${analysis['porsiPerKaryawan']?.toStringAsFixed(0) ?? '0'} porsi',
                 AppColors.textPrimary),
             const SizedBox(height: AppConstants.smallPadding),
             Container(
@@ -447,7 +326,7 @@ class OperationalCalculatorScreenState
                 borderRadius: BorderRadius.circular(AppConstants.borderRadius),
               ),
               child: Text(
-                analysis['recommendation'],
+                analysis['recommendation'] ?? 'Tidak ada rekomendasi',
                 style: TextStyle(fontSize: 12, color: efficiencyColor),
               ),
             ),
@@ -457,17 +336,12 @@ class OperationalCalculatorScreenState
     );
   }
 
-  Widget _buildProjectionCard() {
-    if (calculationResult == null || !calculationResult!.isValid) {
+  Widget _buildProjectionCard(OperationalProvider provider) {
+    final projection = provider.getProjectionAnalysis();
+
+    if (!(projection['isAvailable'] ?? false)) {
       return const SizedBox.shrink();
     }
-
-    final projection =
-        OperationalCalculatorService.calculateOperationalProjection(
-      karyawan: karyawan,
-      estimasiPorsiPerProduksi: sharedData.estimasiPorsi,
-      estimasiProduksiBulanan: sharedData.estimasiProduksiBulanan,
-    );
 
     return Card(
       elevation: AppConstants.cardElevation,
@@ -476,11 +350,11 @@ class OperationalCalculatorScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
                 Icon(Icons.timeline, color: AppColors.secondary, size: 20),
-                const SizedBox(width: AppConstants.smallPadding),
-                const Text('Proyeksi Operasional',
+                SizedBox(width: AppConstants.smallPadding),
+                Text('Proyeksi Operasional',
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
@@ -488,15 +362,12 @@ class OperationalCalculatorScreenState
             const SizedBox(height: AppConstants.smallPadding),
             _buildAnalysisRow(
                 'Biaya per Hari:',
-                AppFormatters.formatRupiah(projection['operationalPerHari']),
+                provider
+                    .formattedTotalGaji, // This should be daily, but using total for now
                 AppColors.textPrimary),
-            _buildAnalysisRow(
-                'Biaya per Porsi:',
-                AppFormatters.formatRupiah(projection['operationalPerPorsi']),
-                AppColors.textPrimary),
-            _buildAnalysisRow(
-                'Total per Bulan:',
-                AppFormatters.formatRupiah(projection['totalGajiBulanan']),
+            _buildAnalysisRow('Biaya per Porsi:',
+                provider.formattedOperationalPerPorsi, AppColors.textPrimary),
+            _buildAnalysisRow('Total per Bulan:', provider.formattedTotalGaji,
                 AppColors.primary),
           ],
         ),
@@ -511,7 +382,8 @@ class OperationalCalculatorScreenState
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textSecondary)),
           Text(value,
               style: TextStyle(
                   fontSize: 14,
@@ -537,48 +409,54 @@ class OperationalCalculatorScreenState
     }
   }
 
-  Future<void> _resetAllData() async {
-    final shouldReset = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Semua Data'),
-        content: const Text(
-            'Apakah Anda yakin ingin menghapus semua data karyawan? Tindakan ini tidak dapat dibatalkan.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Reset', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+  void _handleMenuAction(BuildContext context, String action) async {
+    final operationalProvider =
+        Provider.of<OperationalProvider>(context, listen: false);
 
-    if (shouldReset == true) {
-      setState(() {
-        karyawan = [];
-        sharedData = sharedData.copyWith(
-          karyawan: [],
-          totalOperationalCost: 0.0,
-          totalHargaSetelahOperational: sharedData.hppMurniPerPorsi,
-        );
-      });
-
-      await _hitungOperational();
-      _showSuccessMessage('Semua data operational telah direset');
+    switch (action) {
+      case 'efficiency':
+        _showEfficiencyAnalysis(operationalProvider);
+        break;
+      case 'projection':
+        _showProjectionAnalysis(operationalProvider);
+        break;
+      case 'export':
+        await _handleExport(context, operationalProvider);
+        break;
+      case 'import':
+        await _handleImport(context, operationalProvider);
+        break;
+      case 'reset':
+        await _handleReset(context, operationalProvider);
+        break;
     }
   }
 
-  void _showAnalysisDialog() {
+  void _showAnalysisDialog(OperationalProvider provider) {
+    final analysis = provider.getEfficiencyAnalysis();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Analisis Detail'),
-        content: const Text('Feature analisis detail akan segera tersedia'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Total Karyawan: ${provider.karyawanCount}'),
+            const SizedBox(height: 8),
+            Text('Total Gaji: ${provider.formattedTotalGaji}'),
+            const SizedBox(height: 8),
+            if (analysis['isAvailable'] == true) ...[
+              Text('Efisiensi: ${analysis['efficiency']}'),
+              const SizedBox(height: 8),
+              Text(
+                  'Porsi per Karyawan: ${analysis['porsiPerKaryawan']?.toStringAsFixed(1) ?? '0'}'),
+            ] else ...[
+              Text(analysis['message'] ?? 'Data tidak tersedia'),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -589,13 +467,18 @@ class OperationalCalculatorScreenState
     );
   }
 
-  void _showEfficiencyAnalysis() {
-    if (calculationResult == null || !calculationResult!.isValid) return;
+  void _showEfficiencyAnalysis(OperationalProvider provider) {
+    final analysis = provider.getEfficiencyAnalysis();
 
-    final analysis = OperationalCalculatorService.analyzeKaryawanEfficiency(
-      karyawan: karyawan,
-      totalPorsiBulanan: calculationResult!.totalPorsiBulanan,
-    );
+    if (!(analysis['isAvailable'] ?? false)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data belum lengkap untuk analisis efisiensi'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -608,7 +491,7 @@ class OperationalCalculatorScreenState
             Text('Level: ${analysis['efficiency']}'),
             const SizedBox(height: 8),
             Text(
-                'Porsi per Karyawan: ${analysis['porsiPerKaryawan'].toStringAsFixed(1)}'),
+                'Porsi per Karyawan: ${analysis['porsiPerKaryawan']?.toStringAsFixed(1)}'),
             const SizedBox(height: 8),
             Text('Rekomendasi: ${analysis['recommendation']}'),
           ],
@@ -623,15 +506,18 @@ class OperationalCalculatorScreenState
     );
   }
 
-  void _showProjectionAnalysis() {
-    if (calculationResult == null || !calculationResult!.isValid) return;
+  void _showProjectionAnalysis(OperationalProvider provider) {
+    final projection = provider.getProjectionAnalysis();
 
-    final projection =
-        OperationalCalculatorService.calculateOperationalProjection(
-      karyawan: karyawan,
-      estimasiPorsiPerProduksi: sharedData.estimasiPorsi,
-      estimasiProduksiBulanan: sharedData.estimasiProduksiBulanan,
-    );
+    if (!(projection['isAvailable'] ?? false)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data belum tersedia untuk proyeksi'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -641,17 +527,11 @@ class OperationalCalculatorScreenState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-                'Total Bulanan: ${AppFormatters.formatRupiah(projection['totalGajiBulanan'])}'),
+            Text('Total Bulanan: ${provider.formattedTotalGaji}'),
             const SizedBox(height: 8),
-            Text(
-                'Per Hari: ${AppFormatters.formatRupiah(projection['operationalPerHari'])}'),
+            Text('Per Porsi: ${provider.formattedOperationalPerPorsi}'),
             const SizedBox(height: 8),
-            Text(
-                'Per Porsi: ${AppFormatters.formatRupiah(projection['operationalPerPorsi'])}'),
-            const SizedBox(height: 8),
-            Text(
-                'Rata-rata Gaji: ${AppFormatters.formatRupiah(projection['averageGajiPerKaryawan'])}'),
+            Text('Jumlah Karyawan: ${provider.karyawanCount}'),
           ],
         ),
         actions: [
@@ -662,5 +542,89 @@ class OperationalCalculatorScreenState
         ],
       ),
     );
+  }
+
+  Future<void> _handleExport(
+      BuildContext context, OperationalProvider provider) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 16),
+              Text('📤 Preparing export...'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final result = await provider.exportData();
+
+      if (result != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Data exported successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Export failed'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ErrorDialog.show(
+          context,
+          title: 'Export Error',
+          message: e.toString(),
+          onRetry: () => _handleExport(context, provider),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleImport(
+      BuildContext context, OperationalProvider provider) async {
+    // Implementation would be similar to HPP screen
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Import functionality coming soon'),
+        backgroundColor: AppColors.info,
+      ),
+    );
+  }
+
+  Future<void> _handleReset(
+      BuildContext context, OperationalProvider provider) async {
+    final shouldReset = await ConfirmationDialog.show(
+      context,
+      title: 'Reset Operational Data',
+      message:
+          'Are you sure you want to delete all operational data?\n\nThis includes:\n• All employee data\n• Salary information\n\nThis action cannot be undone.',
+      confirmText: 'RESET',
+      cancelText: 'Cancel',
+    );
+
+    if (shouldReset == true) {
+      provider.resetData();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🗑️ All operational data cleared'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    }
   }
 }

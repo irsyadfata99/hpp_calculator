@@ -1,4 +1,4 @@
-// lib/main.dart - ENHANCED FOR TAHAP 1: DATA PERSISTENCE
+// lib/main.dart - COMPLETE PROVIDER MIGRATION
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -22,8 +22,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Core HPP Provider - Primary data source
         ChangeNotifierProvider(create: (_) => HPPProvider()),
+
+        // Operational Provider - Depends on HPP data
         ChangeNotifierProvider(create: (_) => OperationalProvider()),
+
+        // Menu Provider - Depends on HPP data
         ChangeNotifierProvider(create: (_) => MenuProvider()),
       ],
       child: MaterialApp(
@@ -56,22 +61,44 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _initializeApp() async {
     try {
-      debugPrint('🚀 Initializing ${AppConstants.appName}...');
+      debugPrint(
+          '🚀 Initializing ${AppConstants.appName} with Full Provider Pattern...');
 
       // Wait for first frame to ensure providers are ready
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
 
         try {
-          // Initialize HPP Provider with stored data
+          // Get all providers
           final hppProvider = Provider.of<HPPProvider>(context, listen: false);
+          final operationalProvider =
+              Provider.of<OperationalProvider>(context, listen: false);
+          final menuProvider =
+              Provider.of<MenuProvider>(context, listen: false);
+
+          // Initialize HPP Provider first (primary data source)
+          debugPrint('📊 Initializing HPP Provider...');
           await hppProvider.initializeFromStorage();
 
-          // TODO: Initialize other providers in later phases
-          // final operationalProvider = Provider.of<OperationalProvider>(context, listen: false);
-          // await operationalProvider.initializeFromStorage();
+          // Initialize Operational Provider and setup communication with HPP
+          debugPrint('👥 Initializing Operational Provider...');
+          await operationalProvider.initializeFromStorage();
+          operationalProvider.updateSharedData(hppProvider.data);
 
-          debugPrint('✅ App initialization completed successfully');
+          // Initialize Menu Provider and setup communication with HPP
+          debugPrint('🍽️ Initializing Menu Provider...');
+          await menuProvider.initializeFromStorage();
+          menuProvider.updateSharedData(hppProvider.data);
+
+          // Setup provider-to-provider listeners
+          _setupProviderCommunication(
+              hppProvider, operationalProvider, menuProvider);
+
+          debugPrint('✅ Full Provider Migration completed successfully');
+          debugPrint('📈 App Status:');
+          debugPrint('   - HPP Items: ${hppProvider.data.totalItemCount}');
+          debugPrint('   - Employees: ${operationalProvider.karyawanCount}');
+          debugPrint('   - Menu History: ${menuProvider.historyCount}');
 
           if (mounted) {
             setState(() {
@@ -98,6 +125,29 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         });
       }
     }
+  }
+
+  /// Setup provider-to-provider communication
+  /// HPP Provider is the primary data source, others depend on it
+  void _setupProviderCommunication(
+    HPPProvider hppProvider,
+    OperationalProvider operationalProvider,
+    MenuProvider menuProvider,
+  ) {
+    debugPrint('🔗 Setting up provider-to-provider communication...');
+
+    // Listen to HPP changes and update dependent providers
+    hppProvider.addListener(() {
+      // Update operational provider when HPP data changes
+      operationalProvider.updateSharedData(hppProvider.data);
+
+      // Update menu provider when HPP data changes
+      menuProvider.updateSharedData(hppProvider.data);
+
+      debugPrint('🔄 Provider communication: HPP updated dependent providers');
+    });
+
+    debugPrint('✅ Provider communication setup complete');
   }
 
   @override
@@ -131,6 +181,11 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: const LinearProgressIndicator(),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                '🔄 Initializing Provider Pattern...',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ],
           ),
         ),
@@ -154,7 +209,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                 const Icon(Icons.error_outline, color: Colors.red, size: 64),
                 const SizedBox(height: 24),
                 const Text(
-                  'Initialization Failed',
+                  'Provider Initialization Failed',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -173,7 +228,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Error Details:',
+                        'Provider Error Details:',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -201,7 +256,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                         _initializeApp();
                       },
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
+                      label: const Text('Retry Provider Init'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -216,7 +271,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                         });
                       },
                       icon: const Icon(Icons.play_arrow),
-                      label: const Text('Continue'),
+                      label: const Text('Continue Anyway'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
@@ -231,76 +286,222 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // Main app interface
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: const [
-          HPPCalculatorScreen(),
-          OperationalCalculatorScreen(),
-          MenuCalculatorScreen(),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        elevation: 8,
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.calculate),
-            activeIcon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.calculate,
-                color: Theme.of(context).primaryColor,
-              ),
-            ),
-            label: 'HPP Calculator',
-            tooltip: 'Hitung Harga Pokok Penjualan',
+    // Main app interface with full Provider pattern
+    return Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
+      builder:
+          (context, hppProvider, operationalProvider, menuProvider, child) {
+        return Scaffold(
+          body: IndexedStack(
+            index: _currentIndex,
+            children: const [
+              HPPCalculatorScreen(), // Uses HPPProvider
+              OperationalCalculatorScreen(), // Uses OperationalProvider + HPPProvider
+              MenuCalculatorScreen(), // Uses MenuProvider + HPPProvider
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.business),
-            activeIcon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.business,
-                color: Theme.of(context).primaryColor,
-              ),
+          bottomNavigationBar: _buildBottomNavigationBar(
+              hppProvider, operationalProvider, menuProvider),
+        );
+      },
+    );
+  }
+
+  Widget _buildBottomNavigationBar(
+    HPPProvider hppProvider,
+    OperationalProvider operationalProvider,
+    MenuProvider menuProvider,
+  ) {
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      onTap: (index) {
+        setState(() {
+          _currentIndex = index;
+        });
+
+        // Log navigation with provider status
+        debugPrint('📱 Navigated to tab $index:');
+        switch (index) {
+          case 0:
+            debugPrint(
+                '   HPP Calculator - ${hppProvider.data.totalItemCount} items');
+            break;
+          case 1:
+            debugPrint(
+                '   Operational - ${operationalProvider.karyawanCount} employees');
+            break;
+          case 2:
+            debugPrint('   Menu - ${menuProvider.historyCount} menu history');
+            break;
+        }
+      },
+      type: BottomNavigationBarType.fixed,
+      elevation: 8,
+      items: [
+        BottomNavigationBarItem(
+          icon: const Icon(Icons.calculate),
+          activeIcon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-            label: 'Operational',
-            tooltip: 'Kelola Biaya Operasional',
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.restaurant_menu),
-            activeIcon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.restaurant_menu,
-                color: Theme.of(context).primaryColor,
-              ),
+            child: Icon(
+              Icons.calculate,
+              color: Theme.of(context).primaryColor,
             ),
-            label: 'Menu',
-            tooltip: 'Kalkulasi Menu',
           ),
-        ],
-      ),
+          label: 'HPP Calculator',
+          tooltip: 'Hitung Harga Pokok Penjualan',
+        ),
+        BottomNavigationBarItem(
+          icon: Stack(
+            children: [
+              const Icon(Icons.business),
+              if (operationalProvider.hasKaryawan)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 12,
+                      minHeight: 12,
+                    ),
+                    child: Text(
+                      '${operationalProvider.karyawanCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          activeIcon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              children: [
+                Icon(
+                  Icons.business,
+                  color: Theme.of(context).primaryColor,
+                ),
+                if (operationalProvider.hasKaryawan)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 12,
+                        minHeight: 12,
+                      ),
+                      child: Text(
+                        '${operationalProvider.karyawanCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          label: 'Operational',
+          tooltip: 'Kelola Biaya Operasional & Karyawan',
+        ),
+        BottomNavigationBarItem(
+          icon: Stack(
+            children: [
+              const Icon(Icons.restaurant_menu),
+              if (menuProvider.hasMenuHistory)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 12,
+                      minHeight: 12,
+                    ),
+                    child: Text(
+                      '${menuProvider.historyCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          activeIcon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              children: [
+                Icon(
+                  Icons.restaurant_menu,
+                  color: Theme.of(context).primaryColor,
+                ),
+                if (menuProvider.hasMenuHistory)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 12,
+                        minHeight: 12,
+                      ),
+                      child: Text(
+                        '${menuProvider.historyCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          label: 'Menu',
+          tooltip: 'Kalkulasi Menu & Profit',
+        ),
+      ],
     );
   }
 }
