@@ -20,6 +20,12 @@ dependencies:
   shared_preferences: ^2.2.2
   provider: ^6.1.1
 
+  # === TAMBAHAN UNTUK TAHAP 1: DATA PERSISTENCE ===
+  # File handling untuk export/import
+  file_picker: ^6.1.1 # Untuk memilih file import
+  share_plus: ^7.2.1 # Untuk share/export file
+  path_provider: ^2.1.1 # Untuk mendapatkan path direktori
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

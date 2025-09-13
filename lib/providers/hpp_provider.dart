@@ -1,6 +1,9 @@
+// lib/providers/hpp_provider.dart - COMPLETE IMPLEMENTATION
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../models/shared_calculation_data.dart';
 import '../services/hpp_calculator_service.dart';
+import '../services/storage_service.dart';
 import '../utils/validators.dart';
 
 class HPPProvider with ChangeNotifier {
@@ -9,19 +12,51 @@ class HPPProvider with ChangeNotifier {
   bool _isLoading = false;
   HPPCalculationResult? _lastCalculationResult;
 
+  // Auto-save timer
+  Timer? _autoSaveTimer;
+
   // Getters
   SharedCalculationData get data => _data;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   HPPCalculationResult? get lastCalculationResult => _lastCalculationResult;
 
-  // Variable Costs Methods
+  // ===============================================
+  // INITIALIZATION WITH STORAGE
+  // ===============================================
+
+  Future<void> initializeFromStorage() async {
+    _setLoading(true);
+    try {
+      final savedData = await StorageService.loadSharedData();
+      if (savedData != null) {
+        _data = savedData;
+        await _recalculateHPP();
+        debugPrint(
+            '✅ HPP Data loaded from storage: ${savedData.totalItemCount} items');
+      } else {
+        debugPrint('ℹ️ No saved HPP data found, using defaults');
+      }
+      _setError(null);
+    } catch (e) {
+      _setError('Error loading data: ${e.toString()}');
+      debugPrint('❌ Error loading HPP from storage: $e');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // ===============================================
+  // VARIABLE COSTS METHODS - WITH AUTO SAVE
+  // ===============================================
+
   Future<void> updateVariableCosts(List<Map<String, dynamic>> costs) async {
     _setLoading(true);
     try {
       _data = _data.copyWith(variableCosts: costs);
       await _recalculateHPP();
       _setError(null);
+      _scheduleAutoSave();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -82,13 +117,17 @@ class HPPProvider with ChangeNotifier {
     }
   }
 
-  // Fixed Costs Methods
+  // ===============================================
+  // FIXED COSTS METHODS - WITH AUTO SAVE
+  // ===============================================
+
   Future<void> updateFixedCosts(List<Map<String, dynamic>> costs) async {
     _setLoading(true);
     try {
       _data = _data.copyWith(fixedCosts: costs);
       await _recalculateHPP();
       _setError(null);
+      _scheduleAutoSave();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -140,7 +179,10 @@ class HPPProvider with ChangeNotifier {
     }
   }
 
-  // Estimation Methods
+  // ===============================================
+  // ESTIMATION METHODS - WITH AUTO SAVE
+  // ===============================================
+
   Future<void> updateEstimasi(double porsi, double produksiBulanan) async {
     // Validate input
     final porsiValidation = InputValidator.validateQuantity(porsi.toString());
@@ -164,6 +206,7 @@ class HPPProvider with ChangeNotifier {
       );
       await _recalculateHPP();
       _setError(null);
+      _scheduleAutoSave();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -171,7 +214,10 @@ class HPPProvider with ChangeNotifier {
     }
   }
 
-  // Core calculation method
+  // ===============================================
+  // CORE CALCULATION METHOD
+  // ===============================================
+
   Future<void> _recalculateHPP() async {
     try {
       final result = HPPCalculatorService.calculateHPP(
@@ -190,15 +236,92 @@ class HPPProvider with ChangeNotifier {
           biayaFixedPerPorsi: result.biayaFixedPerPorsi,
         );
       } else {
-        throw Exception(result.errorMessage ?? 'Calculation failed');
+        debugPrint('❌ HPP Calculation failed: ${result.errorMessage}');
+        // Don't throw, just keep invalid result for display
       }
     } catch (e) {
       _lastCalculationResult = null;
-      throw e;
+      debugPrint('❌ HPP Calculation error: $e');
+      // Don't rethrow to avoid breaking the UI
     }
   }
 
-  // Helper methods
+  // ===============================================
+  // AUTO-SAVE FUNCTIONALITY
+  // ===============================================
+
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), () {
+      _performAutoSave();
+    });
+  }
+
+  Future<void> _performAutoSave() async {
+    try {
+      await StorageService.autoSave(_data);
+      debugPrint('💾 HPP Auto-save completed: ${_data.totalItemCount} items');
+    } catch (e) {
+      debugPrint('❌ HPP Auto-save failed: $e');
+      // Don't set error for auto-save failures to avoid UI disruption
+    }
+  }
+
+  // ===============================================
+  // EXPORT/IMPORT FUNCTIONALITY
+  // ===============================================
+
+  Future<String?> exportData() async {
+    try {
+      _setLoading(true);
+      return await StorageService.exportData();
+    } catch (e) {
+      _setError('Export failed: ${e.toString()}');
+      return null;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> importData(String jsonData) async {
+    try {
+      _setLoading(true);
+      final success = await StorageService.importData(jsonData);
+      if (success) {
+        await initializeFromStorage(); // Reload data
+        debugPrint('✅ HPP Data imported successfully');
+      } else {
+        _setError('Import failed: Invalid data format');
+      }
+      return success;
+    } catch (e) {
+      _setError('Import failed: ${e.toString()}');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> clearAllData() async {
+    try {
+      _setLoading(true);
+      await StorageService.clearAllData();
+      _data = SharedCalculationData();
+      _lastCalculationResult = null;
+      _setError(null);
+      debugPrint('🗑️ HPP Data cleared');
+      notifyListeners();
+    } catch (e) {
+      _setError('Clear data failed: ${e.toString()}');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // ===============================================
+  // HELPER METHODS
+  // ===============================================
+
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
@@ -214,12 +337,54 @@ class HPPProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Reset data
   void resetData() {
     _data = SharedCalculationData();
     _lastCalculationResult = null;
     _errorMessage = null;
     _isLoading = false;
+    _scheduleAutoSave(); // Save the reset state
     notifyListeners();
+  }
+
+  // ===============================================
+  // ADDITIONAL UTILITY METHODS
+  // ===============================================
+
+  // Get formatted totals
+  String get formattedTotalVariableCosts {
+    return _data.formatRupiah(_data.totalVariableCosts);
+  }
+
+  String get formattedTotalFixedCosts {
+    return _data.formatRupiah(_data.totalFixedCosts);
+  }
+
+  String get formattedHppMurni {
+    return _data.formatRupiah(_data.hppMurniPerPorsi);
+  }
+
+  // Check if calculation is ready
+  bool get isCalculationReady {
+    return _data.variableCosts.isNotEmpty &&
+        _data.estimasiPorsi > 0 &&
+        _data.estimasiProduksiBulanan > 0;
+  }
+
+  // Get calculation summary
+  Map<String, dynamic> get calculationSummary {
+    return {
+      'totalVariableItems': _data.variableCosts.length,
+      'totalFixedItems': _data.fixedCosts.length,
+      'totalItems': _data.totalItemCount,
+      'isValid': _lastCalculationResult?.isValid ?? false,
+      'hppMurni': _data.hppMurniPerPorsi,
+      'lastCalculated': DateTime.now().toIso8601String(),
+    };
+  }
+
+  @override
+  void dispose() {
+    _autoSaveTimer?.cancel();
+    super.dispose();
   }
 }
