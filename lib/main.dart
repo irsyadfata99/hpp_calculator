@@ -1,4 +1,4 @@
-// lib/main.dart - FIXED PROVIDER MIGRATION
+// lib/main.dart - TAHAP 3 IMPROVED VERSION WITH INDONESIAN TEXT
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -22,13 +22,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Core HPP Provider - Primary data source
+        // Core HPP Provider - Sumber data utama
         ChangeNotifierProvider(create: (_) => HPPProvider()),
 
-        // Operational Provider - Depends on HPP data
+        // Operational Provider - Bergantung pada data HPP
         ChangeNotifierProvider(create: (_) => OperationalProvider()),
 
-        // Menu Provider - Depends on HPP data
+        // Menu Provider - Bergantung pada data HPP
         ChangeNotifierProvider(create: (_) => MenuProvider()),
       ],
       child: MaterialApp(
@@ -61,52 +61,51 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _initializeApp() async {
     try {
-      debugPrint(
-          '🚀 Initializing ${AppConstants.appName} with Full Provider Pattern...');
+      debugPrint('🚀 Menginisialisasi ${AppConstants.appName}...');
 
-      // Wait for first frame to ensure providers are ready
+      // Tunggu frame pertama untuk memastikan provider siap
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
 
         try {
-          // Get all providers
+          // Dapatkan semua provider
           final hppProvider = Provider.of<HPPProvider>(context, listen: false);
           final operationalProvider =
               Provider.of<OperationalProvider>(context, listen: false);
           final menuProvider =
               Provider.of<MenuProvider>(context, listen: false);
 
-          // Initialize HPP Provider first (primary data source)
-          debugPrint('📊 Initializing HPP Provider...');
+          // Inisialisasi HPP Provider terlebih dahulu (sumber data utama)
+          debugPrint('📊 Menginisialisasi HPP Provider...');
           await hppProvider.initializeFromStorage();
 
-          // Initialize Operational Provider and setup communication with HPP
-          debugPrint('👥 Initializing Operational Provider...');
+          // Inisialisasi Operational Provider dan setup komunikasi dengan HPP
+          debugPrint('👥 Menginisialisasi Operational Provider...');
           await operationalProvider.initializeFromStorage();
 
-          // FIXED: Wait for HPP to be ready before updating operational
+          // Tunggu HPP siap sebelum update operational
           if (hppProvider.data.estimasiPorsi > 0) {
             operationalProvider.updateSharedData(hppProvider.data);
           }
 
-          // Initialize Menu Provider and setup communication with HPP
-          debugPrint('🍽️ Initializing Menu Provider...');
+          // Inisialisasi Menu Provider dan setup komunikasi dengan HPP
+          debugPrint('🍽️ Menginisialisasi Menu Provider...');
           await menuProvider.initializeFromStorage();
 
-          // FIXED: Wait for HPP to be ready before updating menu
+          // Tunggu HPP siap sebelum update menu
           if (hppProvider.data.estimasiPorsi > 0) {
             menuProvider.updateSharedData(hppProvider.data);
           }
 
-          // Setup provider-to-provider listeners
+          // Setup komunikasi antar provider
           _setupProviderCommunication(
               hppProvider, operationalProvider, menuProvider);
 
-          debugPrint('✅ Full Provider Migration completed successfully');
-          debugPrint('📈 App Status:');
-          debugPrint('   - HPP Items: ${hppProvider.data.totalItemCount}');
-          debugPrint('   - Employees: ${operationalProvider.karyawanCount}');
-          debugPrint('   - Menu History: ${menuProvider.historyCount}');
+          debugPrint('✅ Migrasi Provider selesai sukses');
+          debugPrint('📈 Status Aplikasi:');
+          debugPrint('   - Item HPP: ${hppProvider.data.totalItemCount}');
+          debugPrint('   - Karyawan: ${operationalProvider.karyawanCount}');
+          debugPrint('   - Riwayat Menu: ${menuProvider.historyCount}');
 
           if (mounted) {
             setState(() {
@@ -115,7 +114,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
             });
           }
         } catch (e) {
-          debugPrint('❌ Provider initialization error: $e');
+          debugPrint('❌ Error inisialisasi provider: $e');
           if (mounted) {
             setState(() {
               _isInitialized = true;
@@ -125,7 +124,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         }
       });
     } catch (e) {
-      debugPrint('❌ App initialization error: $e');
+      debugPrint('❌ Error inisialisasi aplikasi: $e');
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -135,19 +134,19 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  /// FIXED: Setup provider-to-provider communication with proper debouncing
+  /// Setup komunikasi antar provider dengan debouncing yang proper
   void _setupProviderCommunication(
     HPPProvider hppProvider,
     OperationalProvider operationalProvider,
     MenuProvider menuProvider,
   ) {
-    debugPrint('🔗 Setting up provider-to-provider communication...');
+    debugPrint('🔗 Menyiapkan komunikasi antar provider...');
 
-    // FIXED: Add listener with debouncing to prevent infinite loops
+    // Tambahkan listener dengan debouncing untuk mencegah infinite loop
     hppProvider.addListener(() {
-      // Only update if providers are initialized and data has actually changed
+      // Update hanya jika provider sudah terinisialisasi dan data benar-benar berubah
       if (_isInitialized && hppProvider.data.estimasiPorsi > 0) {
-        // Update operational provider when HPP data changes
+        // Update operational provider ketika data HPP berubah
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             operationalProvider.updateSharedData(hppProvider.data);
@@ -157,12 +156,12 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       }
     });
 
-    debugPrint('✅ Provider communication setup complete');
+    debugPrint('✅ Setup komunikasi provider selesai');
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show loading screen during initialization
+    // Tampilkan loading screen selama inisialisasi
     if (!_isInitialized) {
       return Scaffold(
         body: Center(
@@ -172,7 +171,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
               Text(
-                'Loading ${AppConstants.appName}...',
+                'Memuat ${AppConstants.appName}...',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
@@ -180,7 +179,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Version ${AppConstants.appVersion}',
+                'Versi ${AppConstants.appVersion}',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[600],
@@ -193,7 +192,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                '🔄 Initializing Provider Pattern...',
+                '🔄 Menginisialisasi sistem...',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
@@ -202,7 +201,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // Show error screen if initialization failed
+    // Tampilkan error screen jika inisialisasi gagal
     if (_initError != null) {
       return Scaffold(
         appBar: AppBar(
@@ -219,7 +218,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                 const Icon(Icons.error_outline, color: Colors.red, size: 64),
                 const SizedBox(height: 24),
                 const Text(
-                  'Provider Initialization Failed',
+                  'Gagal Menginisialisasi Aplikasi',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -238,7 +237,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Provider Error Details:',
+                        'Detail Error:',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -266,7 +265,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                         _initializeApp();
                       },
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry Provider Init'),
+                      label: const Text('Coba Lagi'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -281,7 +280,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
                         });
                       },
                       icon: const Icon(Icons.play_arrow),
-                      label: const Text('Continue Anyway'),
+                      label: const Text('Lanjutkan'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
@@ -296,7 +295,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // Main app interface with full Provider pattern
+    // Interface utama aplikasi dengan pola Provider lengkap
     return Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
       builder:
           (context, hppProvider, operationalProvider, menuProvider, child) {
@@ -304,9 +303,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           body: IndexedStack(
             index: _currentIndex,
             children: const [
-              HPPCalculatorScreen(), // Uses HPPProvider
-              OperationalCalculatorScreen(), // Uses OperationalProvider + HPPProvider
-              MenuCalculatorScreen(), // Uses MenuProvider + HPPProvider
+              HPPCalculatorScreen(), // Menggunakan HPPProvider
+              OperationalCalculatorScreen(), // Menggunakan OperationalProvider + HPPProvider
+              MenuCalculatorScreen(), // Menggunakan MenuProvider + HPPProvider
             ],
           ),
           bottomNavigationBar: _buildBottomNavigationBar(
@@ -328,19 +327,19 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           _currentIndex = index;
         });
 
-        // Log navigation with provider status
-        debugPrint('📱 Navigated to tab $index:');
+        // Log navigasi dengan status provider
+        debugPrint('📱 Navigasi ke tab $index:');
         switch (index) {
           case 0:
             debugPrint(
-                '   HPP Calculator - ${hppProvider.data.totalItemCount} items');
+                '   Kalkulator HPP - ${hppProvider.data.totalItemCount} item');
             break;
           case 1:
             debugPrint(
-                '   Operational - ${operationalProvider.karyawanCount} employees');
+                '   Operasional - ${operationalProvider.karyawanCount} karyawan');
             break;
           case 2:
-            debugPrint('   Menu - ${menuProvider.historyCount} menu history');
+            debugPrint('   Menu - ${menuProvider.historyCount} riwayat menu');
             break;
         }
       },
@@ -360,7 +359,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               color: Theme.of(context).primaryColor,
             ),
           ),
-          label: 'HPP Calculator',
+          label: AppConstants.labelHPPCalculator,
           tooltip: 'Hitung Harga Pokok Penjualan',
         ),
         BottomNavigationBarItem(
@@ -434,7 +433,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               ],
             ),
           ),
-          label: 'Operational',
+          label: 'Operasional',
           tooltip: 'Kelola Biaya Operasional & Karyawan',
         ),
         BottomNavigationBarItem(
@@ -508,8 +507,8 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               ],
             ),
           ),
-          label: 'Menu',
-          tooltip: 'Kalkulasi Menu & Profit',
+          label: 'Menu & Profit',
+          tooltip: 'Kalkulasi Menu & Keuntungan',
         ),
       ],
     );

@@ -20,7 +20,7 @@ class HPPCalculatorScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HPP Calculator'),
+        title: const Text('Kalkulator HPP'),
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.onPrimary,
         actions: [
