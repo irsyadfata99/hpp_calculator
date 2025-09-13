@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/universal_unit_service.dart';
+import '../../services/universal_unit_service.dart';
 
 class MenuIngredientSelectorWidget extends StatefulWidget {
   final List<Map<String, dynamic>> availableIngredients;
@@ -39,7 +39,7 @@ class MenuIngredientSelectorWidgetState
     _jumlahController.clear();
   }
 
-  // Calculate cost berdasarkan mode yang dipilih
+  // Calculate cost berdasarkan mode yang dipilih - FIXED
   double _calculateCost() {
     if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
       return 0.0;
@@ -50,34 +50,39 @@ class MenuIngredientSelectorWidgetState
 
     double jumlah = double.tryParse(_jumlahController.text) ?? 0;
 
+    CalculationResult result;
     if (_selectedSatuan == '%') {
       // Percentage mode
-      return UniversalUnitService.calculatePercentageCost(
+      result = UniversalUnitService.calculatePercentageCost(
         totalPrice: ingredient['totalHarga'],
         packageQuantity: ingredient['jumlah'],
         percentageUsed: jumlah,
       );
     } else {
       // Unit mode
-      return UniversalUnitService.calculateUnitCost(
+      result = UniversalUnitService.calculateUnitCost(
         totalPrice: ingredient['totalHarga'],
         packageQuantity: ingredient['jumlah'],
         unitsUsed: jumlah,
       );
     }
+
+    return result.isSuccess ? result.cost : 0.0;
   }
 
-  // Get unit price untuk reference
+  // Get unit price untuk reference - FIXED
   double _getUnitPrice() {
     if (_selectedIngredient == null) return 0.0;
 
     var ingredient = widget.availableIngredients
         .firstWhere((item) => item['nama'] == _selectedIngredient);
 
-    return UniversalUnitService.calculateUnitPrice(
+    CalculationResult result = UniversalUnitService.calculateUnitPrice(
       totalPrice: ingredient['totalHarga'],
       packageQuantity: ingredient['jumlah'],
     );
+
+    return result.isSuccess ? result.cost : 0.0;
   }
 
   // Build helper info berdasarkan mode
@@ -198,7 +203,7 @@ class MenuIngredientSelectorWidgetState
     );
   }
 
-  // Build validation warning
+  // Build validation warning - FIXED
   Widget _buildValidationWarning() {
     if (_selectedSatuan != '%' || _jumlahController.text.isEmpty) {
       return const SizedBox.shrink();
@@ -208,7 +213,8 @@ class MenuIngredientSelectorWidgetState
     ValidationResult validation =
         UniversalUnitService.validatePercentage(percentage);
 
-    if (!validation.isValid || validation.isWarning) {
+    if (!validation.isValid ||
+        validation.severity == ValidationSeverity.warning) {
       return Container(
         margin: const EdgeInsets.only(top: 8),
         padding: const EdgeInsets.all(8),

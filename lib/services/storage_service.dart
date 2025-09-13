@@ -1,21 +1,39 @@
-// lib/services/storage_service.dart
+// lib/services/storage_service.dart - Integrated with Constants & Validators
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/shared_calculation_data.dart';
 import '../models/karyawan_data.dart';
 import '../models/menu_model.dart';
+import '../utils/constants.dart';
+import '../utils/validators.dart';
 
 class StorageService {
-  static const String _keySharedData = 'shared_calculation_data';
-  static const String _keyMenuHistory = 'menu_history';
+  // Using constants from AppConstants instead of local constants
+  static const String _keySharedData = AppConstants.keySharedData;
+  static const String _keyMenuHistory = AppConstants.keyMenuHistory;
   static const String _keyBackupData = 'backup_data';
 
-  // Save shared calculation data
+  // Maximum history items using validation approach
+  static const int _maxHistoryItems = 20;
+
+  // Auto-save debounce tracker
+  static DateTime? _lastAutoSave;
+
+  // Save shared calculation data with comprehensive validation
   static Future<bool> saveSharedData(SharedCalculationData data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // Validate data before saving
+      if (!_validateSharedData(data)) {
+        developer.log('Data validation failed during save',
+            name: 'StorageService');
+        return false;
+      }
+
       final jsonData = {
+        'version': AppConstants.appVersion, // Using constant
         'variableCosts': data.variableCosts,
         'fixedCosts': data.fixedCosts,
         'estimasiPorsi': data.estimasiPorsi,
@@ -24,14 +42,24 @@ class StorageService {
         'lastUpdated': DateTime.now().toIso8601String(),
       };
 
-      return await prefs.setString(_keySharedData, json.encode(jsonData));
+      final jsonString = json.encode(jsonData);
+
+      // Check data size against reasonable limits
+      if (jsonString.length > 1024 * 1024) {
+        // 1MB limit
+        developer.log('Data size too large: ${jsonString.length} bytes',
+            name: 'StorageService');
+        return false;
+      }
+
+      return await prefs.setString(_keySharedData, jsonString);
     } catch (e) {
       developer.log('Error saving data: $e', name: 'StorageService');
       return false;
     }
   }
 
-  // Load shared calculation data
+  // Load shared calculation data with validation
   static Future<SharedCalculationData?> loadSharedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -41,18 +69,48 @@ class StorageService {
 
       final Map<String, dynamic> jsonData = json.decode(jsonString);
 
-      List<KaryawanData> karyawan = (jsonData['karyawan'] as List)
-          .map((item) => KaryawanData.fromMap(item))
-          .toList();
+      // Validate loaded data structure
+      if (!_validateLoadedDataStructure(jsonData)) {
+        developer.log('Loaded data structure is invalid',
+            name: 'StorageService');
+        return null;
+      }
+
+      List<KaryawanData> karyawan = [];
+      if (jsonData['karyawan'] != null) {
+        try {
+          karyawan = (jsonData['karyawan'] as List)
+              .map((item) => KaryawanData.fromMap(item))
+              .toList();
+        } catch (e) {
+          developer.log('Error parsing karyawan data: $e',
+              name: 'StorageService');
+          // Continue with empty karyawan list instead of failing completely
+        }
+      }
+
+      // Use constants for default values
+      final estimasiPorsi = _validateAndClampDouble(
+        jsonData['estimasiPorsi'],
+        AppConstants.defaultEstimasiPorsi,
+        AppConstants.minQuantity,
+        AppConstants.maxQuantity,
+      );
+
+      final estimasiProduksi = _validateAndClampDouble(
+        jsonData['estimasiProduksiBulanan'],
+        AppConstants.defaultEstimasiProduksi,
+        AppConstants.minQuantity,
+        AppConstants.maxQuantity,
+      );
 
       return SharedCalculationData(
         variableCosts:
             List<Map<String, dynamic>>.from(jsonData['variableCosts'] ?? []),
         fixedCosts:
             List<Map<String, dynamic>>.from(jsonData['fixedCosts'] ?? []),
-        estimasiPorsi: jsonData['estimasiPorsi']?.toDouble() ?? 1.0,
-        estimasiProduksiBulanan:
-            jsonData['estimasiProduksiBulanan']?.toDouble() ?? 30.0,
+        estimasiPorsi: estimasiPorsi,
+        estimasiProduksiBulanan: estimasiProduksi,
         karyawan: karyawan,
       );
     } catch (e) {
@@ -61,18 +119,36 @@ class StorageService {
     }
   }
 
-  // Save menu to history
+  // Save menu to history with validation
   static Future<bool> saveMenuToHistory(MenuItem menu) async {
     try {
+      // Validate menu data before saving
+      if (!_validateMenuItem(menu)) {
+        developer.log('Menu validation failed', name: 'StorageService');
+        return false;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       List<String> history = prefs.getStringList(_keyMenuHistory) ?? [];
 
       // Add new menu to beginning of list
-      history.insert(0, json.encode(menu.toMap()));
+      final menuJson = json.encode(menu.toMap());
 
-      // Keep only last 20 menus
-      if (history.length > 20) {
-        history = history.take(20).toList();
+      // Check if menu already exists (avoid duplicates)
+      history.removeWhere((item) {
+        try {
+          final existing = json.decode(item);
+          return existing['nama_menu'] == menu.namaMenu;
+        } catch (e) {
+          return false;
+        }
+      });
+
+      history.insert(0, menuJson);
+
+      // Keep only specified number of recent menus
+      if (history.length > _maxHistoryItems) {
+        history = history.take(_maxHistoryItems).toList();
       }
 
       return await prefs.setStringList(_keyMenuHistory, history);
@@ -82,33 +158,56 @@ class StorageService {
     }
   }
 
-  // Load menu history
+  // Load menu history with validation
   static Future<List<MenuItem>> loadMenuHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       List<String> history = prefs.getStringList(_keyMenuHistory) ?? [];
 
-      return history.map((jsonString) {
-        final Map<String, dynamic> jsonData = json.decode(jsonString);
-        return MenuItem.fromMap(jsonData);
-      }).toList();
+      List<MenuItem> validMenuItems = [];
+
+      for (String jsonString in history) {
+        try {
+          final Map<String, dynamic> jsonData = json.decode(jsonString);
+          final menuItem = MenuItem.fromMap(jsonData);
+
+          // Validate loaded menu item
+          if (_validateMenuItem(menuItem)) {
+            validMenuItems.add(menuItem);
+          } else {
+            developer.log('Skipping invalid menu item: ${menuItem.namaMenu}',
+                name: 'StorageService');
+          }
+        } catch (e) {
+          developer.log('Error parsing menu item: $e', name: 'StorageService');
+          // Skip invalid items instead of failing completely
+        }
+      }
+
+      return validMenuItems;
     } catch (e) {
       developer.log('Error loading menu history: $e', name: 'StorageService');
       return [];
     }
   }
 
-  // Export data for backup
+  // Export data for backup with validation
   static Future<String?> exportData() async {
     try {
       final sharedData = await loadSharedData();
       final menuHistory = await loadMenuHistory();
 
       final exportData = {
-        'version': '1.0',
+        'version': AppConstants.appVersion,
+        'appName': AppConstants.appName,
         'exportDate': DateTime.now().toIso8601String(),
         'sharedData': sharedData?.toMap(),
         'menuHistory': menuHistory.map((m) => m.toMap()).toList(),
+        'metadata': {
+          'totalItems': (sharedData?.totalItemCount ?? 0) + menuHistory.length,
+          'hasKaryawan': (sharedData?.karyawan.isNotEmpty ?? false),
+          'hasMenuHistory': menuHistory.isNotEmpty,
+        }
       };
 
       return json.encode(exportData);
@@ -118,50 +217,46 @@ class StorageService {
     }
   }
 
-  // Import data from backup
+  // Import data from backup with comprehensive validation
   static Future<bool> importData(String jsonData) async {
     try {
       final Map<String, dynamic> importData = json.decode(jsonData);
 
-      // Validate import data structure
-      if (!importData.containsKey('version') ||
-          !importData.containsKey('sharedData')) {
-        throw Exception('Invalid backup file format');
+      // Validate import data structure using comprehensive checks
+      if (!_validateImportDataStructure(importData)) {
+        developer.log('Invalid backup file format', name: 'StorageService');
+        return false;
       }
 
-      // Import shared data
+      // Check version compatibility
+      final importVersion = importData['version'] as String?;
+      if (importVersion != null && !_isVersionCompatible(importVersion)) {
+        developer.log('Incompatible backup version: $importVersion',
+            name: 'StorageService');
+        return false;
+      }
+
+      // Import shared data with validation
       if (importData['sharedData'] != null) {
-        final sharedDataMap = importData['sharedData'] as Map<String, dynamic>;
-
-        // Create SharedCalculationData from imported data
-        List<KaryawanData> karyawan = (sharedDataMap['karyawan'] as List?)
-                ?.map((item) => KaryawanData.fromMap(item))
-                .toList() ??
-            [];
-
-        final sharedData = SharedCalculationData(
-          variableCosts: List<Map<String, dynamic>>.from(
-              sharedDataMap['variableCosts'] ?? []),
-          fixedCosts: List<Map<String, dynamic>>.from(
-              sharedDataMap['fixedCosts'] ?? []),
-          estimasiPorsi: sharedDataMap['estimasiPorsi']?.toDouble() ?? 1.0,
-          estimasiProduksiBulanan:
-              sharedDataMap['estimasiProduksiBulanan']?.toDouble() ?? 30.0,
-          karyawan: karyawan,
-        );
-
-        await saveSharedData(sharedData);
+        final success = await _importSharedData(importData['sharedData']);
+        if (!success) {
+          developer.log('Failed to import shared data', name: 'StorageService');
+          return false;
+        }
       }
 
-      // Import menu history
+      // Import menu history with validation
       if (importData['menuHistory'] != null) {
-        final prefs = await SharedPreferences.getInstance();
-        List<String> history = (importData['menuHistory'] as List)
-            .map((item) => json.encode(item))
-            .toList();
-        await prefs.setStringList(_keyMenuHistory, history);
+        final success = await _importMenuHistory(importData['menuHistory']);
+        if (!success) {
+          developer.log('Failed to import menu history',
+              name: 'StorageService');
+          return false;
+        }
       }
 
+      developer.log('Data import completed successfully',
+          name: 'StorageService');
       return true;
     } catch (e) {
       developer.log('Error importing data: $e', name: 'StorageService');
@@ -169,24 +264,54 @@ class StorageService {
     }
   }
 
-  // Clear all data
+  // Auto-save with debounce functionality
+  static Future<void> autoSave(SharedCalculationData data) async {
+    final now = DateTime.now();
+
+    // Implement debounce using constants
+    if (_lastAutoSave != null &&
+        now.difference(_lastAutoSave!).inMilliseconds <
+            AppConstants.debounceDuration.inMilliseconds) {
+      return;
+    }
+
+    _lastAutoSave = now;
+
+    // Save data
+    final success = await saveSharedData(data);
+    if (success) {
+      developer.log('Auto-save completed', name: 'StorageService');
+    } else {
+      developer.log('Auto-save failed', name: 'StorageService');
+    }
+  }
+
+  // Clear all data with confirmation
   static Future<bool> clearAllData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_keySharedData);
-      await prefs.remove(_keyMenuHistory);
-      await prefs.remove(_keyBackupData);
-      return true;
+
+      // Remove all app-related keys
+      final keys = [_keySharedData, _keyMenuHistory, _keyBackupData];
+
+      bool success = true;
+      for (String key in keys) {
+        final removed = await prefs.remove(key);
+        if (!removed) {
+          developer.log('Failed to remove key: $key', name: 'StorageService');
+          success = false;
+        }
+      }
+
+      if (success) {
+        developer.log('All data cleared successfully', name: 'StorageService');
+      }
+
+      return success;
     } catch (e) {
       developer.log('Error clearing data: $e', name: 'StorageService');
       return false;
     }
-  }
-
-  // Auto-save functionality
-  static Future<void> autoSave(SharedCalculationData data) async {
-    // Save data every 30 seconds or when significant changes occur
-    await saveSharedData(data);
   }
 
   // Check if data exists
@@ -200,14 +325,237 @@ class StorageService {
     }
   }
 
-  // Get data size (for debugging/info purposes)
-  static Future<int> getDataSize() async {
+  // Get data size with detailed breakdown
+  static Future<Map<String, dynamic>> getDataInfo() async {
     try {
-      final dataString = await exportData();
-      return dataString?.length ?? 0;
+      final sharedData = await loadSharedData();
+      final menuHistory = await loadMenuHistory();
+      final exportString = await exportData();
+
+      return {
+        'totalSize': exportString?.length ?? 0,
+        'sharedDataItems': sharedData?.totalItemCount ?? 0,
+        'menuHistoryItems': menuHistory.length,
+        'hasData': sharedData != null,
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'version': AppConstants.appVersion,
+      };
     } catch (e) {
-      developer.log('Error getting data size: $e', name: 'StorageService');
-      return 0;
+      developer.log('Error getting data info: $e', name: 'StorageService');
+      return {
+        'totalSize': 0,
+        'sharedDataItems': 0,
+        'menuHistoryItems': 0,
+        'hasData': false,
+        'error': e.toString(),
+      };
     }
+  }
+
+  // PRIVATE VALIDATION METHODS
+
+  // Validate SharedCalculationData using integrated validators
+  static bool _validateSharedData(SharedCalculationData data) {
+    // Validate estimasi porsi
+    final porsiValidation =
+        InputValidator.validateQuantity(data.estimasiPorsi.toString());
+    if (porsiValidation != null) {
+      developer.log('Invalid estimasi porsi: $porsiValidation',
+          name: 'StorageService');
+      return false;
+    }
+
+    // Validate estimasi produksi
+    final produksiValidation = InputValidator.validateQuantity(
+        data.estimasiProduksiBulanan.toString());
+    if (produksiValidation != null) {
+      developer.log('Invalid estimasi produksi: $produksiValidation',
+          name: 'StorageService');
+      return false;
+    }
+
+    // Validate karyawan data
+    for (var karyawan in data.karyawan) {
+      final namaValidation = InputValidator.validateName(karyawan.namaKaryawan);
+      if (namaValidation != null) {
+        developer.log('Invalid karyawan name: $namaValidation',
+            name: 'StorageService');
+        return false;
+      }
+
+      final salaryValidation =
+          InputValidator.validateSalary(karyawan.gajiBulanan.toString());
+      if (salaryValidation != null) {
+        developer.log(
+            'Invalid salary for ${karyawan.namaKaryawan}: $salaryValidation',
+            name: 'StorageService');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Validate MenuItem using integrated validators
+  static bool _validateMenuItem(MenuItem menu) {
+    final nameValidation = InputValidator.validateName(menu.namaMenu);
+    if (nameValidation != null) {
+      developer.log('Invalid menu name: $nameValidation',
+          name: 'StorageService');
+      return false;
+    }
+
+    // Validate menu compositions
+    for (var komposisi in menu.komposisi) {
+      final ingredientValidation =
+          InputValidator.validateName(komposisi.namaIngredient);
+      if (ingredientValidation != null) {
+        developer.log('Invalid ingredient name: $ingredientValidation',
+            name: 'StorageService');
+        return false;
+      }
+
+      final quantityValidation =
+          InputValidator.validateQuantity(komposisi.jumlahDipakai.toString());
+      if (quantityValidation != null) {
+        developer.log('Invalid ingredient quantity: $quantityValidation',
+            name: 'StorageService');
+        return false;
+      }
+
+      final priceValidation =
+          InputValidator.validatePrice(komposisi.hargaPerSatuan.toString());
+      if (priceValidation != null) {
+        developer.log('Invalid ingredient price: $priceValidation',
+            name: 'StorageService');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Validate loaded data structure
+  static bool _validateLoadedDataStructure(Map<String, dynamic> data) {
+    final requiredKeys = [
+      'variableCosts',
+      'fixedCosts',
+      'estimasiPorsi',
+      'estimasiProduksiBulanan'
+    ];
+
+    for (String key in requiredKeys) {
+      if (!data.containsKey(key)) {
+        developer.log('Missing required key: $key', name: 'StorageService');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Validate import data structure
+  static bool _validateImportDataStructure(Map<String, dynamic> importData) {
+    if (!importData.containsKey('version')) {
+      developer.log('Import data missing version', name: 'StorageService');
+      return false;
+    }
+
+    if (!importData.containsKey('sharedData') &&
+        !importData.containsKey('menuHistory')) {
+      developer.log('Import data contains no useful data',
+          name: 'StorageService');
+      return false;
+    }
+
+    return true;
+  }
+
+  // Check version compatibility
+  static bool _isVersionCompatible(String importVersion) {
+    // Simple version check - in production you might want more sophisticated version comparison
+    final currentVersion = AppConstants.appVersion;
+    return importVersion == currentVersion || importVersion.startsWith('1.');
+  }
+
+  // Import shared data helper
+  static Future<bool> _importSharedData(
+      Map<String, dynamic> sharedDataMap) async {
+    try {
+      List<KaryawanData> karyawan = [];
+      if (sharedDataMap['karyawan'] != null) {
+        karyawan = (sharedDataMap['karyawan'] as List)
+            .map((item) => KaryawanData.fromMap(item))
+            .toList();
+      }
+
+      final sharedData = SharedCalculationData(
+        variableCosts: List<Map<String, dynamic>>.from(
+            sharedDataMap['variableCosts'] ?? []),
+        fixedCosts:
+            List<Map<String, dynamic>>.from(sharedDataMap['fixedCosts'] ?? []),
+        estimasiPorsi: _validateAndClampDouble(
+          sharedDataMap['estimasiPorsi'],
+          AppConstants.defaultEstimasiPorsi,
+          AppConstants.minQuantity,
+          AppConstants.maxQuantity,
+        ),
+        estimasiProduksiBulanan: _validateAndClampDouble(
+          sharedDataMap['estimasiProduksiBulanan'],
+          AppConstants.defaultEstimasiProduksi,
+          AppConstants.minQuantity,
+          AppConstants.maxQuantity,
+        ),
+        karyawan: karyawan,
+      );
+
+      return await saveSharedData(sharedData);
+    } catch (e) {
+      developer.log('Error importing shared data: $e', name: 'StorageService');
+      return false;
+    }
+  }
+
+  // Import menu history helper
+  static Future<bool> _importMenuHistory(List<dynamic> menuHistoryData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      List<String> history = [];
+
+      for (var item in menuHistoryData) {
+        try {
+          final menuItem = MenuItem.fromMap(item as Map<String, dynamic>);
+          if (_validateMenuItem(menuItem)) {
+            history.add(json.encode(menuItem.toMap()));
+          }
+        } catch (e) {
+          developer.log('Skipping invalid menu item during import: $e',
+              name: 'StorageService');
+        }
+      }
+
+      // Limit imported history
+      if (history.length > _maxHistoryItems) {
+        history = history.take(_maxHistoryItems).toList();
+      }
+
+      return await prefs.setStringList(_keyMenuHistory, history);
+    } catch (e) {
+      developer.log('Error importing menu history: $e', name: 'StorageService');
+      return false;
+    }
+  }
+
+  // Validate and clamp double values using constants
+  static double _validateAndClampDouble(
+      dynamic value, double defaultValue, double min, double max) {
+    if (value == null) return defaultValue;
+
+    double? parsed =
+        value is double ? value : double.tryParse(value.toString());
+    if (parsed == null) return defaultValue;
+
+    // Clamp value within valid range
+    return parsed.clamp(min, max);
   }
 }

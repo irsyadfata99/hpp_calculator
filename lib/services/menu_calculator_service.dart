@@ -3,6 +3,7 @@
 import '../models/menu_model.dart';
 import '../models/shared_calculation_data.dart';
 import 'hpp_calculator_service.dart';
+import '../utils/constants.dart';
 
 class MenuCalculationResult {
   final double biayaBahanBakuMenu;
@@ -109,10 +110,39 @@ class MenuCalculatorService {
     required double marginPercentage,
   }) {
     try {
-      // Validasi input
+      // Validasi input menggunakan konstanta dari AppConstants
       if (menu.komposisi.isEmpty) {
         return MenuCalculationResult.error(
             'Menu harus memiliki minimal 1 komposisi bahan');
+      }
+
+      // Validasi margin percentage
+      if (marginPercentage < AppConstants.minPercentage ||
+          marginPercentage > AppConstants.maxPercentage) {
+        return MenuCalculationResult.error(
+            'Margin harus antara ${AppConstants.minPercentage}% - ${AppConstants.maxPercentage}%');
+      }
+
+      // Validasi komposisi menu
+      for (var komposisi in menu.komposisi) {
+        if (komposisi.namaIngredient.trim().isEmpty) {
+          return MenuCalculationResult.error(AppConstants.errorEmptyName);
+        }
+
+        if (komposisi.namaIngredient.length > AppConstants.maxTextLength) {
+          return MenuCalculationResult.error(
+              'Nama bahan terlalu panjang (maksimal ${AppConstants.maxTextLength} karakter)');
+        }
+
+        if (komposisi.jumlahDipakai <= 0 ||
+            komposisi.jumlahDipakai > AppConstants.maxQuantity) {
+          return MenuCalculationResult.error(AppConstants.errorInvalidQuantity);
+        }
+
+        if (komposisi.hargaPerSatuan < AppConstants.minPrice ||
+            komposisi.hargaPerSatuan > AppConstants.maxPrice) {
+          return MenuCalculationResult.error(AppConstants.errorInvalidPrice);
+        }
       }
 
       // 1. Hitung biaya bahan baku untuk menu ini (resep)
@@ -186,23 +216,41 @@ class MenuCalculatorService {
   /// Menghitung harga per satuan dengan benar sesuai rumus: Total Biaya ÷ Jumlah Bahan
   static List<Map<String, dynamic>> getAvailableIngredients(
       List<Map<String, dynamic>> variableCosts) {
-    return variableCosts.map((item) {
-      final totalHarga = item['totalHarga'];
-      final jumlah = item['jumlah'];
+    // Validasi input menggunakan konstanta
+    if (variableCosts.isEmpty) return [];
 
-      double hargaPerSatuan = 0.0;
-      if (totalHarga is num && jumlah is num && jumlah > 0) {
-        // Rumus: Biaya per Satuan = Total Biaya Bahan Baku ÷ Jumlah Bahan Baku
-        hargaPerSatuan = totalHarga.toDouble() / jumlah.toDouble();
-      }
+    return variableCosts
+        .map((item) {
+          final totalHarga = item['totalHarga'];
+          final jumlah = item['jumlah'];
+          final nama = item['nama'] ?? '';
+          final satuan = item['satuan'] ?? AppConstants.defaultUnit;
 
-      return {
-        'nama': item['nama'] ?? '',
-        'satuan': item['satuan'] ?? '',
-        'hargaPerSatuan': hargaPerSatuan, // Sudah dihitung per satuan
-        'stok': jumlah is num ? jumlah.toDouble() : 0.0,
-      };
-    }).toList();
+          // Validasi data item
+          if (nama.trim().isEmpty) return null;
+
+          double hargaPerSatuan = 0.0;
+          if (totalHarga is num && jumlah is num && jumlah > 0) {
+            // Rumus: Biaya per Satuan = Total Biaya Bahan Baku ÷ Jumlah Bahan Baku
+            hargaPerSatuan = totalHarga.toDouble() / jumlah.toDouble();
+
+            // Validasi harga per satuan sesuai konstanta
+            if (hargaPerSatuan < AppConstants.minPrice ||
+                hargaPerSatuan > AppConstants.maxPrice) {
+              return null; // Skip item dengan harga tidak valid
+            }
+          }
+
+          return {
+            'nama': nama.trim(),
+            'satuan': satuan,
+            'hargaPerSatuan': hargaPerSatuan, // Sudah dihitung per satuan
+            'stok': jumlah is num ? jumlah.toDouble() : 0.0,
+          };
+        })
+        .where((item) => item != null)
+        .cast<Map<String, dynamic>>()
+        .toList();
   }
 
   /// Validasi apakah komposisi menu valid
@@ -210,9 +258,12 @@ class MenuCalculatorService {
     if (komposisi.isEmpty) return false;
 
     return komposisi.every((item) =>
-        item.namaIngredient.isNotEmpty &&
-        item.jumlahDipakai > 0 &&
-        item.hargaPerSatuan > 0);
+        item.namaIngredient.trim().isNotEmpty &&
+        item.namaIngredient.length <= AppConstants.maxTextLength &&
+        item.jumlahDipakai >= AppConstants.minQuantity &&
+        item.jumlahDipakai <= AppConstants.maxQuantity &&
+        item.hargaPerSatuan >= AppConstants.minPrice &&
+        item.hargaPerSatuan <= AppConstants.maxPrice);
   }
 
   /// Analisis margin menu
@@ -229,7 +280,8 @@ class MenuCalculatorService {
     String rekomendasi;
     String status;
 
-    if (result.marginPercentage >= 100) {
+    // Menggunakan konstanta AppConstants untuk kategorisasi margin
+    if (result.marginPercentage >= AppConstants.maxPercentage) {
       kategori = 'Premium';
       rekomendasi = 'Margin sangat tinggi, cocok untuk menu premium';
       status = 'excellent';
@@ -237,7 +289,7 @@ class MenuCalculatorService {
       kategori = 'Profit Tinggi';
       rekomendasi = 'Margin baik, menu menguntungkan';
       status = 'good';
-    } else if (result.marginPercentage >= 25) {
+    } else if (result.marginPercentage >= AppConstants.defaultMargin) {
       kategori = 'Standard';
       rekomendasi = 'Margin cukup, sesuai standar industri';
       status = 'normal';
@@ -256,6 +308,47 @@ class MenuCalculatorService {
       'rekomendasi': rekomendasi,
       'status': status,
       'profitRatio': (result.profitPerMenu / result.hargaSetelahMargin) * 100,
+    };
+  }
+
+  /// Method tambahan untuk membantu analisis menu
+  static Map<String, dynamic> getMenuAnalysis(MenuCalculationResult result) {
+    if (!result.isValid) {
+      return {
+        'isEfficient': false,
+        'costBreakdown': {},
+        'recommendations': [],
+      };
+    }
+
+    // Breakdown biaya
+    Map<String, double> costBreakdown = {
+      'bahanBaku': result.biayaBahanBakuMenu,
+      'fixedCost': result.biayaFixedPerMenu,
+      'operational': result.biayaOperationalPerMenu,
+      'profit': result.profitPerMenu,
+    };
+
+    // Rekomendasi berdasarkan analisis
+    List<String> recommendations = [];
+
+    double bahanBakuRatio =
+        (result.biayaBahanBakuMenu / result.hppMurniPerMenu) * 100;
+    if (bahanBakuRatio > 70) {
+      recommendations.add('Pertimbangkan optimasi penggunaan bahan baku');
+    }
+
+    if (result.marginPercentage < AppConstants.defaultMargin) {
+      recommendations.add(
+          'Margin di bawah standar industri (${AppConstants.defaultMargin}%)');
+    }
+
+    return {
+      'isEfficient': bahanBakuRatio <= 70 &&
+          result.marginPercentage >= AppConstants.defaultMargin,
+      'costBreakdown': costBreakdown,
+      'recommendations': recommendations,
+      'bahanBakuRatio': bahanBakuRatio,
     };
   }
 }

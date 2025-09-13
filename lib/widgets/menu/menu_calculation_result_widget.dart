@@ -1,7 +1,7 @@
 // File: lib/widgets/menu_calculation_result_widget.dart
 
 import 'package:flutter/material.dart';
-import '../services/menu_calculator_service.dart';
+import '../../services/menu_calculator_service.dart';
 
 class MenuCalculationResultWidget extends StatelessWidget {
   final String namaMenu;

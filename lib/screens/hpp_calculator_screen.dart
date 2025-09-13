@@ -1,254 +1,271 @@
-// File: lib/screens/hpp_calculator_screen.dart (Refactored)
-
 import 'package:flutter/material.dart';
-import '../models/shared_calculation_data.dart';
-import '../services/hpp_calculator_service.dart';
-import '../widgets/variable_cost_widget.dart';
-import '../widgets/fixed_cost_widget.dart';
-import '../widgets/hpp_result_widget.dart';
+import 'package:provider/provider.dart';
+import '../providers/hpp_provider.dart';
+import '../widgets/hpp/variable_cost_widget.dart';
+import '../widgets/hpp/fixed_cost_widget.dart';
+import '../widgets/hpp/hpp_result_widget.dart';
+import '../widgets/common/loading_widget.dart';
+import '../utils/constants.dart';
+import '../theme/app_colors.dart';
 
-class HPPCalculatorScreen extends StatefulWidget {
-  final SharedCalculationData sharedData;
-  final Function(SharedCalculationData) onDataChanged;
-
-  const HPPCalculatorScreen({
-    super.key,
-    required this.sharedData,
-    required this.onDataChanged,
-  });
-
-  @override
-  HPPCalculatorScreenState createState() => HPPCalculatorScreenState();
-}
-
-class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
-  late List<Map<String, dynamic>> variableCosts;
-  late List<Map<String, dynamic>> fixedCosts;
-  late double estimasiPorsi;
-  late double estimasiProduksiBulanan;
-
-  // Hasil perhitungan HPP menggunakan service
-  HPPCalculationResult? calculationResult;
-  String? errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    // Ambil data dari shared data atau mulai dengan data kosong
-    variableCosts = List.from(widget.sharedData.variableCosts);
-    fixedCosts = List.from(widget.sharedData.fixedCosts);
-    estimasiPorsi = widget.sharedData.estimasiPorsi;
-    estimasiProduksiBulanan = widget.sharedData.estimasiProduksiBulanan;
-
-    _hitungHPP();
-  }
-
-  void _hitungHPP() {
-    try {
-      // Gunakan HPPCalculatorService untuk perhitungan yang benar
-      final result = HPPCalculatorService.calculateHPP(
-        variableCosts: variableCosts,
-        fixedCosts: fixedCosts,
-        estimasiPorsiPerProduksi: estimasiPorsi,
-        estimasiProduksiBulanan: estimasiProduksiBulanan,
-      );
-
-      setState(() {
-        calculationResult = result;
-        errorMessage = result.isValid ? null : result.errorMessage;
-      });
-
-      // Update shared data SETELAH setState selesai
-      // Menggunakan post-frame callback untuk menghindari setState during build
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        SharedCalculationData newData = SharedCalculationData(
-          variableCosts: variableCosts,
-          fixedCosts: fixedCosts,
-          estimasiPorsi: estimasiPorsi,
-          estimasiProduksiBulanan: estimasiProduksiBulanan,
-          hppMurniPerPorsi: result.hppMurniPerPorsi,
-          biayaVariablePerPorsi: result.biayaVariablePerPorsi,
-          biayaFixedPerPorsi: result.biayaFixedPerPorsi,
-          karyawan: widget.sharedData.karyawan,
-          totalOperationalCost: widget.sharedData.totalOperationalCost,
-          totalHargaSetelahOperational:
-              widget.sharedData.totalHargaSetelahOperational,
-        );
-
-        widget.onDataChanged(newData);
-      });
-    } catch (e) {
-      setState(() {
-        errorMessage = 'Error dalam perhitungan: ${e.toString()}';
-        calculationResult = null;
-      });
-    }
-  }
+class HPPCalculatorScreen extends StatelessWidget {
+  const HPPCalculatorScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('HPP Calculator'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Error Message jika ada
-            if (errorMessage != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red[300]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline, color: Colors.red[700], size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        errorMessage!,
-                        style: TextStyle(color: Colors.red[700], fontSize: 14),
-                      ),
-                    ),
-                  ],
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.onPrimary,
+        actions: [
+          Consumer<HPPProvider>(
+            builder: (context, hppProvider, child) {
+              if (hppProvider.lastCalculationResult?.isValid == true) {
+                return IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: () => _showCalculationInfo(context, hppProvider),
+                  tooltip: 'Info Perhitungan',
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) => _handleMenuAction(context, value),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  leading: Icon(Icons.download),
+                  title: Text('Export Data'),
+                  dense: true,
                 ),
               ),
-
-            // Variable Cost Card
-            VariableCostWidget(
-              variableCosts: variableCosts,
-              onDataChanged: () {
-                _hitungHPP();
-              },
-              onAddItem: (nama, totalHarga, jumlah, satuan) {
-                setState(() {
-                  variableCosts.add({
-                    'nama': nama,
-                    'totalHarga': totalHarga,
-                    'jumlah': jumlah,
-                    'satuan': satuan,
-                  });
-                });
-                _hitungHPP();
-              },
-              onRemoveItem: (index) {
-                setState(() {
-                  variableCosts.removeAt(index);
-                });
-                _hitungHPP();
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            // Fixed Cost Card
-            FixedCostWidget(
-              fixedCosts: fixedCosts,
-              onDataChanged: () {
-                _hitungHPP();
-              },
-              onAddItem: (jenis, nominal) {
-                setState(() {
-                  fixedCosts.add({
-                    'jenis': jenis,
-                    'nominal': nominal,
-                  });
-                });
-                _hitungHPP();
-              },
-              onRemoveItem: (index) {
-                setState(() {
-                  fixedCosts.removeAt(index);
-                });
-                _hitungHPP();
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            // HPP Result Card menggunakan hasil dari service
-            HPPResultWidget(
-              biayaVariablePerPorsi:
-                  calculationResult?.biayaVariablePerPorsi ?? 0.0,
-              biayaFixedPerPorsi: calculationResult?.biayaFixedPerPorsi ?? 0.0,
-              hppMurniPerPorsi: calculationResult?.hppMurniPerPorsi ?? 0.0,
-              estimasiPorsi: estimasiPorsi,
-              estimasiProduksiBulanan: estimasiProduksiBulanan,
-              onEstimasiPorsiChanged: (value) {
-                setState(() {
-                  estimasiPorsi = value;
-                });
-                _hitungHPP();
-              },
-              onEstimasiProduksiChanged: (value) {
-                setState(() {
-                  estimasiProduksiBulanan = value;
-                });
-                _hitungHPP();
-              },
-            ),
-
-            // Informasi tambahan dari service
-            if (calculationResult != null && calculationResult!.isValid) ...[
-              const SizedBox(height: 16),
-              _buildAdditionalInfo(),
+              const PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.upload),
+                  title: Text('Import Data'),
+                  dense: true,
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'reset',
+                child: ListTile(
+                  leading: Icon(Icons.refresh),
+                  title: Text('Reset Data'),
+                  dense: true,
+                ),
+              ),
             ],
+          ),
+        ],
+      ),
+      body: Consumer<HPPProvider>(
+        builder: (context, hppProvider, child) {
+          if (hppProvider.isLoading) {
+            return const LoadingWidget(message: 'Menghitung HPP...');
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            child: Column(
+              children: [
+                // Error Message
+                if (hppProvider.errorMessage != null)
+                  _buildErrorMessage(context, hppProvider),
+
+                // Data Summary Card
+                _buildDataSummaryCard(hppProvider),
+
+                const SizedBox(height: AppConstants.defaultPadding),
+
+                // Variable Cost Card
+                VariableCostWidget(
+                  variableCosts: hppProvider.data.variableCosts,
+                  onDataChanged: () {
+                    // Data sudah auto-sync via provider
+                  },
+                  onAddItem: (nama, totalHarga, jumlah, satuan) {
+                    hppProvider.addVariableCost(
+                        nama, totalHarga, jumlah, satuan);
+                  },
+                  onRemoveItem: (index) {
+                    hppProvider.removeVariableCost(index);
+                  },
+                ),
+
+                const SizedBox(height: AppConstants.defaultPadding),
+
+                // Fixed Cost Card
+                FixedCostWidget(
+                  fixedCosts: hppProvider.data.fixedCosts,
+                  onDataChanged: () {
+                    // Data sudah auto-sync via provider
+                  },
+                  onAddItem: (jenis, nominal) {
+                    hppProvider.addFixedCost(jenis, nominal);
+                  },
+                  onRemoveItem: (index) {
+                    hppProvider.removeFixedCost(index);
+                  },
+                ),
+
+                const SizedBox(height: AppConstants.defaultPadding),
+
+                // HPP Result Card
+                HPPResultWidget(
+                  biayaVariablePerPorsi: hppProvider.data.biayaVariablePerPorsi,
+                  biayaFixedPerPorsi: hppProvider.data.biayaFixedPerPorsi,
+                  hppMurniPerPorsi: hppProvider.data.hppMurniPerPorsi,
+                  estimasiPorsi: hppProvider.data.estimasiPorsi,
+                  estimasiProduksiBulanan:
+                      hppProvider.data.estimasiProduksiBulanan,
+                  onEstimasiPorsiChanged: (value) {
+                    hppProvider.updateEstimasi(
+                        value, hppProvider.data.estimasiProduksiBulanan);
+                  },
+                  onEstimasiProduksiChanged: (value) {
+                    hppProvider.updateEstimasi(
+                        hppProvider.data.estimasiPorsi, value);
+                  },
+                ),
+
+                // Additional Information
+                if (hppProvider.lastCalculationResult?.isValid == true) ...[
+                  const SizedBox(height: AppConstants.defaultPadding),
+                  _buildAdditionalInfo(hppProvider),
+                ],
+
+                const SizedBox(height: AppConstants.largePadding),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildErrorMessage(BuildContext context, HPPProvider provider) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppConstants.smallPadding),
+      margin: const EdgeInsets.only(bottom: AppConstants.defaultPadding),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppConstants.borderRadius),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          const SizedBox(width: AppConstants.smallPadding),
+          Expanded(
+            child: Text(
+              provider.errorMessage!,
+              style: TextStyle(color: AppColors.error, fontSize: 14),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: () => provider.clearError(),
+            color: AppColors.error,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataSummaryCard(HPPProvider provider) {
+    return Card(
+      elevation: AppConstants.cardElevation,
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.summarize, color: AppColors.info, size: 20),
+                const SizedBox(width: AppConstants.smallPadding),
+                const Text('Ringkasan Data',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: AppConstants.smallPadding),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildSummaryItem(
+                    'Bahan',
+                    provider.data.variableCosts.length.toString(),
+                    AppColors.success),
+                _buildSummaryItem(
+                    'Fixed Cost',
+                    provider.data.fixedCosts.length.toString(),
+                    AppColors.secondary),
+                _buildSummaryItem(
+                    'Status',
+                    provider.lastCalculationResult?.isValid == true
+                        ? 'Valid'
+                        : 'Invalid',
+                    provider.lastCalculationResult?.isValid == true
+                        ? AppColors.success
+                        : AppColors.error),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAdditionalInfo() {
-    final projection = HPPCalculatorService.calculateMonthlyProjection(
-      hppMurniPerPorsi: calculationResult!.hppMurniPerPorsi,
-      estimasiPorsiPerProduksi: estimasiPorsi,
-      estimasiProduksiBulanan: estimasiProduksiBulanan,
+  Widget _buildSummaryItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value,
+            style: TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        Text(label,
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+      ],
     );
+  }
+
+  Widget _buildAdditionalInfo(HPPProvider provider) {
+    final result = provider.lastCalculationResult!;
 
     return Card(
+      elevation: AppConstants.cardElevation,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppConstants.defaultPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.insights, color: Color(0xFF48B3AF), size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Proyeksi Bulanan',
+                Icon(Icons.insights, color: AppColors.secondary, size: 20),
+                const SizedBox(width: AppConstants.smallPadding),
+                const Text(
+                  'Analisis Detail',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF48B3AF),
+                    color: AppColors.secondary,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _buildProjectionRow(
-                'Total Bahan Baku:',
-                HPPCalculatorService.formatRupiah(
-                    calculationResult!.totalBiayaBahanBaku)),
-            _buildProjectionRow(
-                'Total Fixed Cost:',
-                HPPCalculatorService.formatRupiah(
-                    calculationResult!.totalBiayaFixedBulanan)),
+            const SizedBox(height: AppConstants.smallPadding),
+            _buildProjectionRow('Total Bahan Baku:',
+                provider.data.formatRupiah(result.totalBiayaBahanBaku)),
+            _buildProjectionRow('Total Fixed Cost:',
+                provider.data.formatRupiah(result.totalBiayaFixedBulanan)),
             _buildProjectionRow('Total Porsi per Bulan:',
-                '${projection['totalPorsiBulanan']!.toStringAsFixed(0)} porsi'),
-            _buildProjectionRow(
-                'Estimasi HPP per Bulan:',
-                HPPCalculatorService.formatRupiah(
-                    projection['totalHPPBulanan']!)),
-            _buildProjectionRow('Estimasi HPP per Hari:',
-                HPPCalculatorService.formatRupiah(projection['hppPerHari']!)),
+                '${result.totalPorsiBulanan.toStringAsFixed(0)} porsi'),
           ],
         ),
       ),
@@ -266,12 +283,58 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
             value,
             style: const TextStyle(
               fontWeight: FontWeight.w600,
-              color: Color(0xFF476EAE),
+              color: AppColors.primary,
               fontSize: 14,
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _showCalculationInfo(BuildContext context, HPPProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Info Perhitungan HPP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('App Version: ${AppConstants.appVersion}'),
+            const SizedBox(height: 8),
+            Text('Total Items: ${provider.data.totalItemCount}'),
+            const SizedBox(height: 8),
+            Text(
+                'Calculation Time: ${DateTime.now().toString().substring(0, 19)}'),
+            const SizedBox(height: 8),
+            Text(
+                'Status: ${provider.lastCalculationResult?.isValid == true ? "Valid" : "Error"}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Tutup'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleMenuAction(BuildContext context, String action) {
+    // TODO: Implement export/import/reset actions
+    // Will be completed in Phase 4
+    switch (action) {
+      case 'export':
+        // Export functionality
+        break;
+      case 'import':
+        // Import functionality
+        break;
+      case 'reset':
+        // Reset functionality
+        break;
+    }
   }
 }

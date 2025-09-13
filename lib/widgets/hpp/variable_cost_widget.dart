@@ -1,8 +1,8 @@
-// File: lib/widgets/variable_cost_widget.dart (Universal)
+// File: lib/widgets/variable_cost_widget.dart (Universal - Fixed)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/universal_unit_service.dart';
+import '../../services/universal_unit_service.dart';
 
 class VariableCostWidget extends StatefulWidget {
   final List<Map<String, dynamic>> variableCosts;
@@ -268,10 +268,14 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   }
 
   Widget _buildItemTile(Map<String, dynamic> item, int index) {
-    double hargaPerSatuan = UniversalUnitService.calculateUnitPrice(
+    // FIXED: Handle CalculationResult properly
+    CalculationResult unitPriceResult = UniversalUnitService.calculateUnitPrice(
       totalPrice: item['totalHarga'],
       packageQuantity: item['jumlah'],
     );
+
+    double hargaPerSatuan =
+        unitPriceResult.isSuccess ? unitPriceResult.cost : 0.0;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),

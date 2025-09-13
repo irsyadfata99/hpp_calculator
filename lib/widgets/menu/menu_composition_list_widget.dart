@@ -1,8 +1,8 @@
 // File: lib/widgets/menu_composition_list_widget.dart
 
 import 'package:flutter/material.dart';
-import '../models/menu_model.dart';
-import '../services/menu_calculator_service.dart';
+import '../../models/menu_model.dart';
+import '../../services/menu_calculator_service.dart';
 
 class MenuCompositionListWidget extends StatelessWidget {
   final List<MenuComposition> komposisiMenu;

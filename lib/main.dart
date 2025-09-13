@@ -1,12 +1,18 @@
-// File: lib/main.dart (Simplified)
-
+// lib/main.dart - FIXED VERSION
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/hpp_provider.dart';
+import 'providers/operational_provider.dart';
+import 'providers/menu_provider.dart';
 import 'screens/hpp_calculator_screen.dart';
 import 'screens/operational_calculator_screen.dart';
 import 'screens/menu_calculator_screen.dart';
-import '../models/shared_calculation_data.dart';
+import 'theme/app_theme.dart';
+import 'utils/constants.dart';
+import 'services/storage_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -15,49 +21,23 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Kalkulator HPP',
-      theme: ThemeData(
-        // Color Palette sesuai permintaan
-        primaryColor: const Color(0xFF476EAE),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF476EAE),
-          secondary: const Color(0xFF48B3AF),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF476EAE),
-          foregroundColor: Colors.white,
-          centerTitle: true,
-          elevation: 0,
-        ),
-        cardTheme: CardThemeData(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          margin: const EdgeInsets.symmetric(vertical: 8),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          filled: true,
-          fillColor: Colors.grey.shade50,
-        ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          selectedItemColor: Color(0xFF476EAE),
-          unselectedItemColor: Colors.grey,
-          backgroundColor: Colors.white,
-          elevation: 8,
-          type: BottomNavigationBarType.fixed,
-        ),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => HPPProvider()),
+        ChangeNotifierProvider(create: (_) => OperationalProvider()),
+        ChangeNotifierProvider(create: (_) => MenuProvider()),
+      ],
+      child: MaterialApp(
+        title: AppConstants.appName,
+        theme: AppTheme.lightTheme,
+        home: const MainNavigationScreen(),
+        debugShowCheckedModeBanner: false,
       ),
-      home: const MainNavigationScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
 
+// Rest remains the same...
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
 
@@ -67,32 +47,67 @@ class MainNavigationScreen extends StatefulWidget {
 
 class MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
-  late SharedCalculationData _sharedData;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _sharedData = SharedCalculationData();
+    _initializeApp();
   }
 
-  void _updateSharedData(SharedCalculationData newData) {
-    setState(() {
-      _sharedData = newData;
-    });
+  Future<void> _initializeApp() async {
+    try {
+      // Test Provider access
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          try {
+            final hppProvider =
+                Provider.of<HPPProvider>(context, listen: false);
+            debugPrint(
+                '✅ HPP Provider found: ${hppProvider.data.totalItemCount}');
+          } catch (e) {
+            debugPrint('❌ Provider error: $e');
+          }
+        }
+      });
+
+      final savedData = await StorageService.loadSharedData();
+      if (savedData != null && mounted) {
+        debugPrint('Loaded saved data: ${savedData.totalItemCount} items');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error initializing app: $e');
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: [
-          HPPCalculatorScreen(
-            sharedData: _sharedData,
-            onDataChanged: _updateSharedData,
-          ),
-          OperationalCalculatorScreen(sharedData: _sharedData),
-          MenuCalculatorScreen(sharedData: _sharedData),
+        children: const [
+          HPPCalculatorScreen(),
+          OperationalCalculatorScreen(),
+          MenuCalculatorScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -102,7 +117,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
             _currentIndex = index;
           });
         },
-        type: BottomNavigationBarType.fixed, // Penting untuk 3+ tabs
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.calculate),
