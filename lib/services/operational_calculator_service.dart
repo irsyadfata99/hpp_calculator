@@ -1,4 +1,4 @@
-// File: lib/services/operational_calculator_service.dart (Full Integration)
+// File: lib/services/operational_calculator_service.dart - FIXED TYPE CONVERSION
 
 import 'package:flutter/foundation.dart';
 import '../models/karyawan_data.dart';
@@ -73,15 +73,17 @@ class OperationalCalculationResult {
 }
 
 class OperationalCalculatorService {
-  /// Menghitung total biaya operational berdasarkan data karyawan dengan full validation
+  /// FIXED: Menghitung total biaya operational dengan explicit double conversion
   static double calculateTotalGajiBulanan(List<KaryawanData> karyawan) {
     if (karyawan.isEmpty) return 0.0;
 
     double total = 0.0;
     for (var k in karyawan) {
+      // FIXED: Explicit double conversion
+      double gaji = k.gajiBulanan.toDouble();
+
       // Validate salary using integrated validator
-      final salaryValidation =
-          InputValidator.validateSalary(k.gajiBulanan.toString());
+      final salaryValidation = InputValidator.validateSalary(gaji.toString());
       if (salaryValidation != null) {
         debugPrint(
             'Warning: Gaji karyawan ${k.namaKaryawan} tidak valid: $salaryValidation');
@@ -89,114 +91,175 @@ class OperationalCalculatorService {
       }
 
       // Check against constants
-      if (k.gajiBulanan > AppConstants.maxPrice) {
+      if (gaji > AppConstants.maxPrice) {
         debugPrint(
-            'Warning: Gaji karyawan ${k.namaKaryawan} terlalu besar: ${k.gajiBulanan}');
+            'Warning: Gaji karyawan ${k.namaKaryawan} terlalu besar: $gaji');
         continue;
       }
 
-      total += k.gajiBulanan;
+      total += gaji;
     }
 
+    debugPrint(
+        '✅ Total gaji calculated: ${AppFormatters.formatRupiah(total)} from ${karyawan.length} employees');
     return total;
   }
 
-  /// Menghitung biaya operational per porsi dengan validation
+  /// FIXED: Menghitung biaya operational per porsi dengan explicit type conversion
   static double calculateOperationalCostPerPorsi({
     required List<KaryawanData> karyawan,
     required double estimasiPorsiPerProduksi,
     required double estimasiProduksiBulanan,
   }) {
+    debugPrint('🧮 calculateOperationalCostPerPorsi called with:');
+    debugPrint(
+        '  estimasiPorsiPerProduksi: $estimasiPorsiPerProduksi (${estimasiPorsiPerProduksi.runtimeType})');
+    debugPrint(
+        '  estimasiProduksiBulanan: $estimasiProduksiBulanan (${estimasiProduksiBulanan.runtimeType})');
+    debugPrint('  karyawan count: ${karyawan.length}');
+
+    // FIXED: Explicit double conversion
+    double porsi = estimasiPorsiPerProduksi.toDouble();
+    double produksi = estimasiProduksiBulanan.toDouble();
+
     // Validate inputs using integrated validators
-    final porsiValidation =
-        InputValidator.validateQuantity(estimasiPorsiPerProduksi.toString());
+    final porsiValidation = InputValidator.validateQuantity(porsi.toString());
     if (porsiValidation != null) {
-      debugPrint('Warning: Estimasi porsi tidak valid: $porsiValidation');
+      debugPrint('❌ Warning: Estimasi porsi tidak valid: $porsiValidation');
       return 0.0;
     }
 
     final produksiValidation =
-        InputValidator.validateQuantity(estimasiProduksiBulanan.toString());
+        InputValidator.validateQuantity(produksi.toString());
     if (produksiValidation != null) {
-      debugPrint('Warning: Estimasi produksi tidak valid: $produksiValidation');
+      debugPrint(
+          '❌ Warning: Estimasi produksi tidak valid: $produksiValidation');
       return 0.0;
     }
 
     // Check against constants
-    if (estimasiPorsiPerProduksi < AppConstants.minQuantity ||
-        estimasiProduksiBulanan < AppConstants.minQuantity) {
+    if (porsi < AppConstants.minQuantity ||
+        produksi < AppConstants.minQuantity) {
+      debugPrint(
+          '❌ Warning: Estimasi kurang dari minimum (${AppConstants.minQuantity})');
       return 0.0;
     }
 
-    if (estimasiPorsiPerProduksi > AppConstants.maxQuantity ||
-        estimasiProduksiBulanan > AppConstants.maxQuantity) {
+    if (porsi > AppConstants.maxQuantity ||
+        produksi > AppConstants.maxQuantity) {
       debugPrint(
-          'Warning: Estimasi melebihi batas maksimal (${AppConstants.maxQuantity})');
+          '❌ Warning: Estimasi melebihi batas maksimal (${AppConstants.maxQuantity})');
       return 0.0;
     }
 
     double totalGaji = calculateTotalGajiBulanan(karyawan);
-    double totalPorsiBulanan =
-        estimasiPorsiPerProduksi * estimasiProduksiBulanan;
+    double totalPorsiBulanan = porsi * produksi;
+
+    debugPrint('💰 Calculation details:');
+    debugPrint('  totalGaji: ${AppFormatters.formatRupiah(totalGaji)}');
+    debugPrint('  totalPorsiBulanan: $totalPorsiBulanan porsi');
 
     // Validate result
-    if (totalPorsiBulanan <= 0) return 0.0;
+    if (totalPorsiBulanan <= 0) {
+      debugPrint('❌ Warning: Total porsi bulanan zero or negative');
+      return 0.0;
+    }
 
     double result = totalGaji / totalPorsiBulanan;
 
     // Check if result is reasonable
     if (result > AppConstants.maxPrice) {
-      debugPrint('Warning: Biaya operational per porsi terlalu besar: $result');
+      debugPrint(
+          '❌ Warning: Biaya operational per porsi terlalu besar: ${AppFormatters.formatRupiah(result)}');
       return 0.0;
     }
 
+    debugPrint(
+        '✅ Operational cost per porsi: ${AppFormatters.formatRupiah(result)}');
     return result;
   }
 
-  /// Menghitung total harga final setelah termasuk biaya operational
+  /// FIXED: Menghitung total harga final dengan explicit double conversion
   static double calculateTotalHargaSetelahOperational({
     required double hppMurniPerPorsi,
     required double operationalCostPerPorsi,
   }) {
+    // FIXED: Explicit double conversion
+    double hpp = hppMurniPerPorsi.toDouble();
+    double operational = operationalCostPerPorsi.toDouble();
+
+    debugPrint('🏁 calculateTotalHargaSetelahOperational:');
+    debugPrint('  hppMurniPerPorsi: ${AppFormatters.formatRupiah(hpp)}');
+    debugPrint(
+        '  operationalCostPerPorsi: ${AppFormatters.formatRupiah(operational)}');
+
     // Validate inputs
-    if (hppMurniPerPorsi < 0 || operationalCostPerPorsi < 0) {
+    if (hpp < 0 || operational < 0) {
+      debugPrint('❌ Warning: Negative values detected');
       return 0.0;
     }
 
-    double total = hppMurniPerPorsi + operationalCostPerPorsi;
+    double total = hpp + operational;
 
     // Validate result against constants
     if (total > AppConstants.maxPrice) {
       debugPrint(
-          'Warning: Total harga setelah operational terlalu besar: $total');
+          '❌ Warning: Total harga setelah operational terlalu besar: ${AppFormatters.formatRupiah(total)}');
       return AppConstants.maxPrice;
     }
 
+    debugPrint(
+        '✅ Total harga setelah operational: ${AppFormatters.formatRupiah(total)}');
     return total;
   }
 
-  /// Perhitungan lengkap operational cost dengan comprehensive validation
+  /// FIXED: Perhitungan lengkap operational cost dengan comprehensive validation dan type conversion
   static OperationalCalculationResult calculateOperationalCost({
     required List<KaryawanData> karyawan,
     required double hppMurniPerPorsi,
     required double estimasiPorsiPerProduksi,
     required double estimasiProduksiBulanan,
   }) {
+    debugPrint(
+        '🚀 OperationalCalculatorService.calculateOperationalCost called');
+    debugPrint('📊 Input parameters:');
+    debugPrint(
+        '  hppMurniPerPorsi: $hppMurniPerPorsi (${hppMurniPerPorsi.runtimeType})');
+    debugPrint(
+        '  estimasiPorsiPerProduksi: $estimasiPorsiPerProduksi (${estimasiPorsiPerProduksi.runtimeType})');
+    debugPrint(
+        '  estimasiProduksiBulanan: $estimasiProduksiBulanan (${estimasiProduksiBulanan.runtimeType})');
+    debugPrint('  karyawan count: ${karyawan.length}');
+
     try {
+      // FIXED: Explicit double conversion for all parameters
+      double hpp = hppMurniPerPorsi.toDouble();
+      double porsi = estimasiPorsiPerProduksi.toDouble();
+      double produksi = estimasiProduksiBulanan.toDouble();
+
+      debugPrint('🔄 After type conversion:');
+      debugPrint('  hpp: $hpp (${hpp.runtimeType})');
+      debugPrint('  porsi: $porsi (${porsi.runtimeType})');
+      debugPrint('  produksi: $produksi (${produksi.runtimeType})');
+
       // Validasi karyawan data
       final karyawanValidation = _validateKaryawanData(karyawan);
       if (!karyawanValidation.isValid) {
+        debugPrint(
+            '❌ Karyawan validation failed: ${karyawanValidation.errorMessage}');
         return karyawanValidation;
       }
 
       // Validasi input parameters menggunakan integrated validators
       final inputValidation = _validateInputParameters(
-        hppMurniPerPorsi: hppMurniPerPorsi,
-        estimasiPorsiPerProduksi: estimasiPorsiPerProduksi,
-        estimasiProduksiBulanan: estimasiProduksiBulanan,
+        hppMurniPerPorsi: hpp,
+        estimasiPorsiPerProduksi: porsi,
+        estimasiProduksiBulanan: produksi,
       );
 
       if (!inputValidation.isValid) {
+        debugPrint(
+            '❌ Input validation failed: ${inputValidation.errorMessage}');
         return inputValidation;
       }
 
@@ -204,22 +267,30 @@ class OperationalCalculatorService {
       double totalGajiBulanan = calculateTotalGajiBulanan(karyawan);
 
       // Hitung total porsi bulanan
-      double totalPorsiBulanan =
-          estimasiPorsiPerProduksi * estimasiProduksiBulanan;
+      double totalPorsiBulanan = porsi * produksi;
 
       // Hitung operational cost per porsi
       double operationalCostPerPorsi = calculateOperationalCostPerPorsi(
         karyawan: karyawan,
-        estimasiPorsiPerProduksi: estimasiPorsiPerProduksi,
-        estimasiProduksiBulanan: estimasiProduksiBulanan,
+        estimasiPorsiPerProduksi: porsi,
+        estimasiProduksiBulanan: produksi,
       );
 
       // Hitung total harga setelah operational
       double totalHargaSetelahOperational =
           calculateTotalHargaSetelahOperational(
-        hppMurniPerPorsi: hppMurniPerPorsi,
+        hppMurniPerPorsi: hpp,
         operationalCostPerPorsi: operationalCostPerPorsi,
       );
+
+      debugPrint('✅ Calculation results:');
+      debugPrint(
+          '  totalGajiBulanan: ${AppFormatters.formatRupiah(totalGajiBulanan)}');
+      debugPrint(
+          '  operationalCostPerPorsi: ${AppFormatters.formatRupiah(operationalCostPerPorsi)}');
+      debugPrint(
+          '  totalHargaSetelahOperational: ${AppFormatters.formatRupiah(totalHargaSetelahOperational)}');
+      debugPrint('  totalPorsiBulanan: $totalPorsiBulanan');
 
       return OperationalCalculationResult.success(
         totalGajiBulanan: totalGajiBulanan,
@@ -229,6 +300,7 @@ class OperationalCalculatorService {
         jumlahKaryawan: karyawan.length,
       );
     } catch (e) {
+      debugPrint('❌ Error dalam perhitungan operational: $e');
       return OperationalCalculationResult.error(
           'Error dalam perhitungan operational: ${e.toString()}');
     }
@@ -255,17 +327,16 @@ class OperationalCalculatorService {
             'Jabatan karyawan "${k.namaKaryawan}": $jabatanValidation');
       }
 
-      // Validasi gaji
-      final salaryValidation =
-          InputValidator.validateSalary(k.gajiBulanan.toString());
+      // Validasi gaji dengan explicit conversion
+      double gaji = k.gajiBulanan.toDouble();
+      final salaryValidation = InputValidator.validateSalary(gaji.toString());
       if (salaryValidation != null) {
         return OperationalCalculationResult.error(
             'Gaji karyawan "${k.namaKaryawan}": $salaryValidation');
       }
 
       // Check reasonable salary range
-      if (k.gajiBulanan < 100000) {
-        // Minimum wage check
+      if (gaji < 100000) {
         return OperationalCalculationResult.error(
             'Gaji karyawan "${k.namaKaryawan}" terlalu rendah (minimal Rp 100.000)');
       }
@@ -280,25 +351,29 @@ class OperationalCalculatorService {
     );
   }
 
-  /// Validasi input parameters menggunakan integrated validators
+  /// FIXED: Validasi input parameters dengan explicit double conversion
   static OperationalCalculationResult _validateInputParameters({
     required double hppMurniPerPorsi,
     required double estimasiPorsiPerProduksi,
     required double estimasiProduksiBulanan,
   }) {
+    // FIXED: Explicit double conversion
+    double hpp = hppMurniPerPorsi.toDouble();
+    double porsi = estimasiPorsiPerProduksi.toDouble();
+    double produksi = estimasiProduksiBulanan.toDouble();
+
     // Validasi HPP
-    if (hppMurniPerPorsi < 0) {
+    if (hpp < 0) {
       return OperationalCalculationResult.error(
           'HPP murni tidak boleh negatif');
     }
 
-    if (hppMurniPerPorsi > AppConstants.maxPrice) {
+    if (hpp > AppConstants.maxPrice) {
       return OperationalCalculationResult.error('HPP murni terlalu besar');
     }
 
     // Validasi estimasi porsi
-    final porsiValidation =
-        InputValidator.validateQuantity(estimasiPorsiPerProduksi.toString());
+    final porsiValidation = InputValidator.validateQuantity(porsi.toString());
     if (porsiValidation != null) {
       return OperationalCalculationResult.error(
           'Estimasi Porsi: $porsiValidation');
@@ -306,19 +381,19 @@ class OperationalCalculatorService {
 
     // Validasi estimasi produksi
     final produksiValidation =
-        InputValidator.validateQuantity(estimasiProduksiBulanan.toString());
+        InputValidator.validateQuantity(produksi.toString());
     if (produksiValidation != null) {
       return OperationalCalculationResult.error(
           'Estimasi Produksi: $produksiValidation');
     }
 
     // Check against constants
-    if (estimasiPorsiPerProduksi > AppConstants.maxQuantity) {
+    if (porsi > AppConstants.maxQuantity) {
       return OperationalCalculationResult.error(
           'Estimasi porsi terlalu besar (maksimal ${AppConstants.maxQuantity})');
     }
 
-    if (estimasiProduksiBulanan > AppConstants.maxQuantity) {
+    if (produksi > AppConstants.maxQuantity) {
       return OperationalCalculationResult.error(
           'Estimasi produksi terlalu besar (maksimal ${AppConstants.maxQuantity})');
     }
@@ -337,15 +412,18 @@ class OperationalCalculatorService {
     return AppFormatters.formatRupiah(amount);
   }
 
-  /// Menghitung proyeksi operational bulanan dengan analysis
+  /// FIXED: Menghitung proyeksi operational bulanan dengan explicit double conversion
   static Map<String, dynamic> calculateOperationalProjection({
     required List<KaryawanData> karyawan,
     required double estimasiPorsiPerProduksi,
     required double estimasiProduksiBulanan,
   }) {
+    // FIXED: Explicit double conversion
+    double porsi = estimasiPorsiPerProduksi.toDouble();
+    double produksi = estimasiProduksiBulanan.toDouble();
+
     double totalGajiBulanan = calculateTotalGajiBulanan(karyawan);
-    double totalPorsiBulanan =
-        estimasiPorsiPerProduksi * estimasiProduksiBulanan;
+    double totalPorsiBulanan = porsi * produksi;
     double operationalPerPorsi =
         totalPorsiBulanan > 0 ? totalGajiBulanan / totalPorsiBulanan : 0.0;
     double operationalPerHari =
@@ -354,6 +432,7 @@ class OperationalCalculatorService {
         karyawan.isNotEmpty ? totalGajiBulanan / karyawan.length : 0.0;
 
     return {
+      'isAvailable': true,
       'totalGajiBulanan': totalGajiBulanan,
       'operationalPerPorsi': operationalPerPorsi,
       'operationalPerHari': operationalPerHari,
@@ -365,32 +444,37 @@ class OperationalCalculatorService {
     };
   }
 
-  /// Analisis efisiensi karyawan dengan detailed metrics
+  /// FIXED: Analisis efisiensi karyawan dengan detailed metrics dan type conversion
   static Map<String, dynamic> analyzeKaryawanEfficiency({
     required List<KaryawanData> karyawan,
     required double totalPorsiBulanan,
   }) {
-    if (karyawan.isEmpty || totalPorsiBulanan <= 0) {
+    // FIXED: Explicit double conversion
+    double totalPorsi = totalPorsiBulanan.toDouble();
+
+    if (karyawan.isEmpty || totalPorsi <= 0) {
       return {
+        'isAvailable': false,
         'averageGajiPerKaryawan': 0.0,
         'costPerKaryawanPerPorsi': 0.0,
         'porsiPerKaryawan': 0.0,
         'efficiency': 'N/A',
-        'recommendation': 'Tidak ada data karyawan',
+        'recommendation': 'Tidak ada data karyawan untuk analisis',
+        'message': 'Tambahkan data karyawan terlebih dahulu',
       };
     }
 
     double totalGaji = calculateTotalGajiBulanan(karyawan);
     double averageGajiPerKaryawan = totalGaji / karyawan.length;
-    double costPerKaryawanPerPorsi =
-        totalGaji / (karyawan.length * totalPorsiBulanan);
-    double porsiPerKaryawan = totalPorsiBulanan / karyawan.length;
+    double costPerKaryawanPerPorsi = totalGaji / (karyawan.length * totalPorsi);
+    double porsiPerKaryawan = totalPorsi / karyawan.length;
 
     String efficiency = _getEfficiencyLevel(porsiPerKaryawan);
     String recommendation =
         _getEfficiencyRecommendation(porsiPerKaryawan, karyawan.length);
 
     return {
+      'isAvailable': true,
       'averageGajiPerKaryawan': averageGajiPerKaryawan,
       'costPerKaryawanPerPorsi': costPerKaryawanPerPorsi,
       'porsiPerKaryawan': porsiPerKaryawan,
@@ -457,19 +541,25 @@ class OperationalCalculatorService {
     return karyawan.every((k) {
       final namaValid = InputValidator.validateName(k.namaKaryawan) == null;
       final jabatanValid = InputValidator.validateName(k.jabatan) == null;
-      final gajiValid =
-          InputValidator.validateSalary(k.gajiBulanan.toString()) == null;
+
+      // FIXED: Explicit double conversion for validation
+      double gaji = k.gajiBulanan.toDouble();
+      final gajiValid = InputValidator.validateSalary(gaji.toString()) == null;
 
       return namaValid && jabatanValid && gajiValid;
     });
   }
 
-  /// Estimate required staff berdasarkan target produksi
+  /// Estimate required staff berdasarkan target produksi dengan type conversion
   static Map<String, dynamic> estimateRequiredStaff({
     required double targetPorsiBulanan,
     required double averageProductivityPerStaff,
   }) {
-    if (averageProductivityPerStaff <= 0) {
+    // FIXED: Explicit double conversion
+    double target = targetPorsiBulanan.toDouble();
+    double productivity = averageProductivityPerStaff.toDouble();
+
+    if (productivity <= 0) {
       return {
         'requiredStaff': 0,
         'recommendation': 'Tidak dapat menghitung tanpa data produktivitas',
@@ -477,8 +567,7 @@ class OperationalCalculatorService {
       };
     }
 
-    int requiredStaff =
-        (targetPorsiBulanan / averageProductivityPerStaff).ceil();
+    int requiredStaff = (target / productivity).ceil();
     bool isRealistic = requiredStaff <= 50; // Reasonable limit
 
     String recommendation;
@@ -497,8 +586,8 @@ class OperationalCalculatorService {
       'requiredStaff': requiredStaff,
       'recommendation': recommendation,
       'isRealistic': isRealistic,
-      'targetPorsiBulanan': targetPorsiBulanan,
-      'productivityPerStaff': averageProductivityPerStaff,
+      'targetPorsiBulanan': target,
+      'productivityPerStaff': productivity,
     };
   }
 }

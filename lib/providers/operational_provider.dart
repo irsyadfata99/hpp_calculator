@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - COMPLETE IMPLEMENTATION
+// lib/providers/operational_provider.dart - COMPLETE IMPLEMENTATION WITH TYPE FIX
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -6,6 +6,7 @@ import '../models/shared_calculation_data.dart';
 import '../services/operational_calculator_service.dart';
 import '../services/storage_service.dart';
 import '../utils/validators.dart';
+import '../utils/formatters.dart';
 
 class OperationalProvider with ChangeNotifier {
   List<KaryawanData> _karyawan = [];
@@ -54,28 +55,30 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // SHARED DATA INTEGRATION - FIXED
+  // SHARED DATA INTEGRATION - FIXED WITH TYPE CONVERSION
   // ===============================================
 
   void updateSharedData(SharedCalculationData newSharedData) {
     debugPrint('🔄 OperationalProvider.updateSharedData called');
 
-    // FIXED: Create a properly typed copy with explicit double conversion
+    // FIXED: Ensure all numeric values are properly converted to double
     _sharedData = SharedCalculationData(
       variableCosts: newSharedData.variableCosts,
       fixedCosts: newSharedData.fixedCosts,
-      estimasiPorsi: newSharedData.estimasiPorsi.toDouble(),
-      estimasiProduksiBulanan: newSharedData.estimasiProduksiBulanan.toDouble(),
-      hppMurniPerPorsi: newSharedData.hppMurniPerPorsi.toDouble(),
-      biayaVariablePerPorsi: newSharedData.biayaVariablePerPorsi.toDouble(),
-      biayaFixedPerPorsi: newSharedData.biayaFixedPerPorsi.toDouble(),
+      // EXPLICIT DOUBLE CONVERSION - This fixes the type issue
+      estimasiPorsi: _ensureDouble(newSharedData.estimasiPorsi),
+      estimasiProduksiBulanan:
+          _ensureDouble(newSharedData.estimasiProduksiBulanan),
+      hppMurniPerPorsi: _ensureDouble(newSharedData.hppMurniPerPorsi),
+      biayaVariablePerPorsi: _ensureDouble(newSharedData.biayaVariablePerPorsi),
+      biayaFixedPerPorsi: _ensureDouble(newSharedData.biayaFixedPerPorsi),
       karyawan: _karyawan, // Use local karyawan data
-      totalOperationalCost: newSharedData.totalOperationalCost.toDouble(),
+      totalOperationalCost: _ensureDouble(newSharedData.totalOperationalCost),
       totalHargaSetelahOperational:
-          newSharedData.totalHargaSetelahOperational.toDouble(),
+          _ensureDouble(newSharedData.totalHargaSetelahOperational),
     );
 
-    debugPrint('📊 Updated shared data values:');
+    debugPrint('📊 Updated shared data values (FIXED TYPES):');
     debugPrint(
         '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
     debugPrint(
@@ -85,6 +88,17 @@ class OperationalProvider with ChangeNotifier {
     debugPrint('  karyawan count: ${_karyawan.length}');
 
     _recalculateOperational();
+  }
+
+  // FIXED: Helper method for safe double conversion
+  double _ensureDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    return 0.0;
   }
 
   // ===============================================
@@ -132,7 +146,7 @@ class OperationalProvider with ChangeNotifier {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: gaji.toDouble(), // FIXED: Ensure double
+        gajiBulanan: _ensureDouble(gaji), // FIXED: Ensure double
         createdAt: DateTime.now(),
       );
 
@@ -187,7 +201,7 @@ class OperationalProvider with ChangeNotifier {
         id: _karyawan[index].id,
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: gaji.toDouble(), // FIXED: Ensure double
+        gajiBulanan: _ensureDouble(gaji), // FIXED: Ensure double
         createdAt: _karyawan[index].createdAt,
       );
 
@@ -262,7 +276,7 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // CORE CALCULATION METHOD - FIXED
+  // CORE CALCULATION METHOD - FIXED WITH TYPE CONVERSION
   // ===============================================
 
   Future<void> _recalculateOperational() async {
@@ -275,38 +289,45 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    debugPrint('📊 Current SharedData values:');
+    // ENSURE DOUBLE TYPES BEFORE CALCULATION
+    double estimasiPorsi = _ensureDouble(_sharedData!.estimasiPorsi);
+    double estimasiProduksiBulanan =
+        _ensureDouble(_sharedData!.estimasiProduksiBulanan);
+    double hppMurniPerPorsi = _ensureDouble(_sharedData!.hppMurniPerPorsi);
+
+    debugPrint('📊 Input values for calculation (VERIFIED DOUBLE):');
     debugPrint(
-        '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
+        '  estimasiPorsi: $estimasiPorsi (${estimasiPorsi.runtimeType})');
     debugPrint(
-        '  estimasiProduksiBulanan: ${_sharedData!.estimasiProduksiBulanan} (${_sharedData!.estimasiProduksiBulanan.runtimeType})');
+        '  estimasiProduksiBulanan: $estimasiProduksiBulanan (${estimasiProduksiBulanan.runtimeType})');
     debugPrint(
-        '  hppMurniPerPorsi: ${_sharedData!.hppMurniPerPorsi} (${_sharedData!.hppMurniPerPorsi.runtimeType})');
+        '  hppMurniPerPorsi: $hppMurniPerPorsi (${hppMurniPerPorsi.runtimeType})');
     debugPrint('  karyawan count: ${_karyawan.length}');
 
     try {
       final result = OperationalCalculatorService.calculateOperationalCost(
         karyawan: _karyawan,
-        hppMurniPerPorsi: _sharedData!.hppMurniPerPorsi,
-        estimasiPorsiPerProduksi: _sharedData!.estimasiPorsi,
-        estimasiProduksiBulanan: _sharedData!.estimasiProduksiBulanan,
+        hppMurniPerPorsi: hppMurniPerPorsi,
+        estimasiPorsiPerProduksi: estimasiPorsi,
+        estimasiProduksiBulanan: estimasiProduksiBulanan,
       );
 
       debugPrint('✅ Calculation completed:');
       debugPrint('  result.isValid: ${result.isValid}');
-      debugPrint('  result.totalGajiBulanan: ${result.totalGajiBulanan}');
       debugPrint(
-          '  result.operationalCostPerPorsi: ${result.operationalCostPerPorsi}');
+          '  result.totalGajiBulanan: ${AppFormatters.formatRupiah(result.totalGajiBulanan)}');
+      debugPrint(
+          '  result.operationalCostPerPorsi: ${AppFormatters.formatRupiah(result.operationalCostPerPorsi)}');
 
       _lastCalculationResult = result;
 
       if (result.isValid) {
-        // FIXED: Update shared data with operational results using proper double conversion
+        // Update shared data with operational results using explicit double conversion
         _sharedData = _sharedData!.copyWith(
           karyawan: _karyawan,
-          totalOperationalCost: result.totalGajiBulanan.toDouble(),
+          totalOperationalCost: _ensureDouble(result.totalGajiBulanan),
           totalHargaSetelahOperational:
-              result.totalHargaSetelahOperational.toDouble(),
+              _ensureDouble(result.totalHargaSetelahOperational),
         );
         debugPrint('✅ SharedData updated with calculation results');
       } else {
@@ -408,8 +429,9 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.calculateOperationalProjection(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _sharedData!.estimasiPorsi,
-      estimasiProduksiBulanan: _sharedData!.estimasiProduksiBulanan,
+      estimasiPorsiPerProduksi: _ensureDouble(_sharedData!.estimasiPorsi),
+      estimasiProduksiBulanan:
+          _ensureDouble(_sharedData!.estimasiProduksiBulanan),
     );
   }
 
@@ -438,13 +460,13 @@ class OperationalProvider with ChangeNotifier {
     _errorMessage = null;
     _isLoading = false;
 
-    // FIXED: Update shared data when resetting
+    // FIXED: Update shared data when resetting with type safety
     if (_sharedData != null) {
       _sharedData = _sharedData!.copyWith(
         karyawan: _karyawan,
         totalOperationalCost: 0.0,
         totalHargaSetelahOperational:
-            _sharedData!.hppMurniPerPorsi, // Reset to HPP only
+            _ensureDouble(_sharedData!.hppMurniPerPorsi), // Reset to HPP only
       );
     }
 
@@ -453,7 +475,7 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // UTILITY GETTERS
+  // UTILITY GETTERS WITH TYPE SAFETY
   // ===============================================
 
   double get totalGajiBulanan {
@@ -465,8 +487,9 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.calculateOperationalCostPerPorsi(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _sharedData!.estimasiPorsi,
-      estimasiProduksiBulanan: _sharedData!.estimasiProduksiBulanan,
+      estimasiPorsiPerProduksi: _ensureDouble(_sharedData!.estimasiPorsi),
+      estimasiProduksiBulanan:
+          _ensureDouble(_sharedData!.estimasiProduksiBulanan),
     );
   }
 
