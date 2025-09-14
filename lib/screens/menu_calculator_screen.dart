@@ -1,4 +1,4 @@
-// lib/screens/menu_calculator_screen.dart - FIXED VERSION: Import Issue
+// lib/screens/menu_calculator_screen.dart - FIXED VERSION
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,8 +6,7 @@ import '../providers/menu_provider.dart';
 import '../providers/hpp_provider.dart';
 import '../widgets/menu/menu_input_widget.dart';
 import '../widgets/menu/menu_ingredient_selector_widget.dart';
-// FIXED: Add import for MenuCompositionListWidget
-import '../widgets/menu/menu_composition_list_widget.dart'; // Add this import
+import '../widgets/menu/menu_composition_list_widget.dart';
 import '../widgets/menu/menu_calculation_result_widget.dart';
 import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
@@ -22,91 +21,79 @@ class MenuCalculatorScreen extends StatefulWidget {
 }
 
 class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
-  // FIXED: Add flag to prevent infinite provider updates
-  bool _isUpdatingProviders = false;
+  bool _isInitialized = false;
+  String? _initError;
 
   @override
   void initState() {
     super.initState();
-    // FIXED: Delay provider setup to next frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _setupProviderCommunicationSafe();
-      }
-    });
+    _initializeScreen();
   }
 
-  // FIXED: Safe provider communication without infinite loops
-  void _setupProviderCommunicationSafe() {
-    if (_isUpdatingProviders) return;
-
+  void _initializeScreen() async {
     try {
-      _isUpdatingProviders = true;
+      // Wait for next frame to ensure providers are ready
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (!mounted) return;
 
       final hppProvider = Provider.of<HPPProvider>(context, listen: false);
       final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-      // Only sync if HPP has valid data
+      // FIXED: Simple one-time sync - no loops
       if (hppProvider.data.variableCosts.isNotEmpty) {
-        debugPrint('🔄 Syncing HPP data to Menu provider');
         menuProvider.updateSharedData(hppProvider.data);
-      } else {
-        debugPrint('⚠️ HPP data is empty, skipping sync');
+        debugPrint('✅ Menu screen initialized with HPP data');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _initError = null;
+        });
       }
     } catch (e) {
-      debugPrint('❌ Error in provider communication: $e');
-      // Don't throw, just log
-    } finally {
-      _isUpdatingProviders = false;
+      debugPrint('❌ Menu screen initialization error: $e');
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _initError = e.toString();
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return Scaffold(
+        appBar: _buildAppBar(),
+        body: const LoadingWidget(message: 'Loading menu calculator...'),
+      );
+    }
+
+    if (_initError != null) {
+      return Scaffold(
+        appBar: _buildAppBar(),
+        body: _buildErrorState(_initError!),
+      );
+    }
+
     return Scaffold(
       appBar: _buildAppBar(),
-      // FIXED: Use Consumer2 with proper error boundaries
-      body: Consumer2<MenuProvider, HPPProvider>(
-        builder: (context, menuProvider, hppProvider, child) {
-          // FIXED: Handle error states early to prevent cascading errors
+      body: Consumer<MenuProvider>(
+        builder: (context, menuProvider, child) {
+          // FIXED: Simple error handling
           if (menuProvider.errorMessage?.contains('TypeError') == true) {
-            return _buildErrorState('Menu calculation error',
-                menuProvider.errorMessage ?? 'Unknown error');
+            return _buildErrorState('Menu calculation error');
           }
 
-          if (hppProvider.errorMessage?.contains('TypeError') == true) {
-            return _buildErrorState(
-                'HPP data error', hppProvider.errorMessage ?? 'Unknown error');
-          }
-
-          // FIXED: Safe provider sync without listeners (prevents infinite loops)
-          if (!_isUpdatingProviders &&
-              hppProvider.data.variableCosts.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                _setupProviderCommunicationSafe();
-              }
-            });
-          }
-
-          // FIXED: Check for empty HPP data
-          if (hppProvider.data.variableCosts.isEmpty) {
-            return _buildEmptyHPPDataState();
-          }
-
-          // FIXED: Loading state
-          if (menuProvider.isLoading) {
-            return const LoadingWidget(message: 'Loading menu data...');
-          }
-
-          // FIXED: Main content with proper error boundaries
-          return _buildMainContent(menuProvider, hppProvider);
+          return _buildMainContent(menuProvider);
         },
       ),
     );
   }
 
-  // FIXED: Simplified AppBar without complex navigation logic
   AppBar _buildAppBar() {
     return AppBar(
       title: const Text('Menu Calculator'),
@@ -126,7 +113,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
           },
         ),
         PopupMenuButton<String>(
-          onSelected: (value) => _handleMenuAction(context, value),
+          onSelected: (value) => _handleMenuAction(value),
           itemBuilder: (context) => const [
             PopupMenuItem(
               value: 'save',
@@ -150,8 +137,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  // FIXED: Error state widget
-  Widget _buildErrorState(String title, String message) {
+  Widget _buildErrorState(String error) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -160,27 +146,28 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
           children: [
             const Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            const Text(
+              'Menu Calculator Error',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              message,
+              error,
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                final menuProvider =
-                    Provider.of<MenuProvider>(context, listen: false);
-                menuProvider.clearError();
-                menuProvider.resetCurrentMenu();
+                setState(() {
+                  _isInitialized = false;
+                  _initError = null;
+                });
+                _initializeScreen();
               },
               icon: const Icon(Icons.refresh),
-              label: const Text('Reset & Retry'),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -188,7 +175,114 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  // FIXED: Empty HPP data state
+  Widget _buildMainContent(MenuProvider menuProvider) {
+    // FIXED: Check for prerequisites first
+    final hppProvider = Provider.of<HPPProvider>(context, listen: false);
+
+    if (hppProvider.data.variableCosts.isEmpty) {
+      return _buildEmptyHPPDataState();
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppConstants.defaultPadding),
+      child: Column(
+        children: [
+          // Error message
+          if (menuProvider.errorMessage != null)
+            _buildErrorMessage(menuProvider),
+
+          // Menu Summary
+          _buildMenuSummaryCard(menuProvider),
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Menu Input - FIXED: Safe widget wrapper
+          _buildSafeWidget(
+            () => MenuInputWidget(
+              namaMenu: menuProvider.namaMenu,
+              marginPercentage: menuProvider.marginPercentage,
+              onNamaMenuChanged: menuProvider.updateNamaMenu,
+              onMarginChanged: menuProvider.updateMarginPercentage,
+              onDataChanged: () {}, // Not needed with Provider
+            ),
+            'Menu Input',
+          ),
+
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Ingredient Selector - FIXED: Safe widget wrapper
+          _buildSafeWidget(
+            () => MenuIngredientSelectorWidget(
+              availableIngredients: menuProvider.availableIngredients,
+              onAddIngredient: menuProvider.addIngredient,
+            ),
+            'Ingredient Selector',
+          ),
+
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Menu Composition - FIXED: Safe widget wrapper
+          _buildSafeWidget(
+            () => MenuCompositionListWidget(
+              komposisiMenu: menuProvider.komposisiMenu,
+              onRemoveItem: menuProvider.removeIngredient,
+            ),
+            'Menu Composition',
+          ),
+
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Calculation Result - FIXED: Safe widget wrapper
+          _buildSafeWidget(
+            () => MenuCalculationResultWidget(
+              namaMenu: menuProvider.namaMenu,
+              calculationResult: menuProvider.lastCalculationResult,
+            ),
+            'Menu Result',
+          ),
+
+          // Save button
+          if (menuProvider.isMenuValid) ...[
+            const SizedBox(height: AppConstants.defaultPadding),
+            _buildSaveMenuButton(menuProvider),
+          ],
+
+          const SizedBox(height: AppConstants.largePadding),
+        ],
+      ),
+    );
+  }
+
+  // FIXED: Safe widget wrapper to prevent crashes
+  Widget _buildSafeWidget(Widget Function() builder, String widgetName) {
+    try {
+      return builder();
+    } catch (e) {
+      debugPrint('❌ Error rendering $widgetName: $e');
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Icon(Icons.error_outline, color: AppColors.error, size: 32),
+              const SizedBox(height: 8),
+              Text('$widgetName Error',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text('Widget failed to render: ${e.toString()}',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12)),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => setState(() {}), // Trigger rebuild
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
   Widget _buildEmptyHPPDataState() {
     return Center(
       child: Padding(
@@ -212,174 +306,19 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                // Navigate to HPP tab
+                // This would need proper navigation context
                 if (context.mounted) {
-                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please switch to HPP Calculator tab'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
                 }
               },
               icon: const Icon(Icons.arrow_back),
-              label: const Text('Back to HPP Calculator'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-              ),
+              label: const Text('Go to HPP Calculator'),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // FIXED: Main content with proper layout constraints
-  Widget _buildMainContent(MenuProvider menuProvider, HPPProvider hppProvider) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppConstants.defaultPadding),
-      child: Column(
-        children: [
-          // FIXED: Error message with better error handling
-          if (menuProvider.errorMessage != null)
-            _buildErrorMessage(menuProvider),
-
-          // Menu Summary Card
-          _buildMenuSummaryCard(menuProvider),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // FIXED: Menu Input Widget with error boundary
-          _buildMenuInputWidget(menuProvider),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // FIXED: Ingredient Selector with validation
-          _buildIngredientSelectorWidget(menuProvider),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // Menu Composition List Widget
-          _buildMenuCompositionWidget(menuProvider),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // Menu Calculation Result Widget
-          _buildMenuResultWidget(menuProvider),
-
-          // Save Menu Button (if valid)
-          if (menuProvider.isMenuValid) ...[
-            const SizedBox(height: AppConstants.defaultPadding),
-            _buildSaveMenuButton(menuProvider),
-          ],
-
-          // Bottom padding
-          const SizedBox(height: AppConstants.largePadding),
-        ],
-      ),
-    );
-  }
-
-  // FIXED: Individual widget builders with error boundaries
-
-  Widget _buildMenuInputWidget(MenuProvider menuProvider) {
-    try {
-      return MenuInputWidget(
-        namaMenu: menuProvider.namaMenu,
-        marginPercentage: menuProvider.marginPercentage,
-        onNamaMenuChanged: (nama) {
-          menuProvider.updateNamaMenu(nama);
-        },
-        onMarginChanged: (margin) {
-          menuProvider.updateMarginPercentage(margin);
-        },
-        onDataChanged: () {
-          // Data changes handled by provider
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error in menu input widget: $e');
-      return _buildWidgetErrorCard('Menu Input Error');
-    }
-  }
-
-  Widget _buildIngredientSelectorWidget(MenuProvider menuProvider) {
-    try {
-      // FIXED: Validate available ingredients before rendering
-      final availableIngredients = menuProvider.availableIngredients;
-
-      if (availableIngredients.isEmpty) {
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                const Icon(Icons.warning_amber, size: 48, color: Colors.orange),
-                const SizedBox(height: 16),
-                const Text(
-                  'No ingredients available',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Please add ingredient data in HPP Calculator first.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-
-      return MenuIngredientSelectorWidget(
-        availableIngredients: availableIngredients,
-        onAddIngredient: (namaIngredient, jumlah, satuan, hargaPerSatuan) {
-          menuProvider.addIngredient(
-              namaIngredient, jumlah, satuan, hargaPerSatuan);
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error in ingredient selector widget: $e');
-      return _buildWidgetErrorCard('Ingredient Selector Error');
-    }
-  }
-
-  // FIXED: Proper widget instantiation with 'const' constructor call
-  Widget _buildMenuCompositionWidget(MenuProvider menuProvider) {
-    try {
-      return MenuCompositionListWidget(
-        komposisiMenu: menuProvider.komposisiMenu,
-        onRemoveItem: (index) {
-          menuProvider.removeIngredient(index);
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error in menu composition widget: $e');
-      return _buildWidgetErrorCard('Menu Composition Error');
-    }
-  }
-
-  Widget _buildMenuResultWidget(MenuProvider menuProvider) {
-    try {
-      return MenuCalculationResultWidget(
-        namaMenu: menuProvider.namaMenu,
-        calculationResult: menuProvider.lastCalculationResult,
-      );
-    } catch (e) {
-      debugPrint('❌ Error in menu result widget: $e');
-      return _buildWidgetErrorCard('Menu Result Error');
-    }
-  }
-
-  // FIXED: Error card for individual widget errors
-  Widget _buildWidgetErrorCard(String title) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 32),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            const Text('Widget failed to render',
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
           ],
         ),
       ),
@@ -470,29 +409,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () async {
-          try {
-            await provider.saveCurrentMenu();
-            if (mounted && provider.errorMessage == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('✅ Menu saved successfully!'),
-                  backgroundColor: AppColors.success,
-                ),
-              );
-            }
-          } catch (e) {
-            debugPrint('❌ Error saving menu: $e');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('❌ Error saving menu: ${e.toString()}'),
-                  backgroundColor: AppColors.error,
-                ),
-              );
-            }
-          }
-        },
+        onPressed: () => _handleSaveMenu(provider),
         icon: const Icon(Icons.save),
         label: const Text('Save Menu'),
         style: ElevatedButton.styleFrom(
@@ -538,16 +455,16 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  void _handleMenuAction(BuildContext context, String action) async {
+  void _handleMenuAction(String action) async {
     final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
     try {
       switch (action) {
         case 'save':
-          await _handleSaveMenu(context, menuProvider);
+          await _handleSaveMenu(menuProvider);
           break;
         case 'reset_current':
-          await _handleResetCurrent(context, menuProvider);
+          await _handleResetCurrent(menuProvider);
           break;
       }
     } catch (e) {
@@ -563,8 +480,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     }
   }
 
-  Future<void> _handleSaveMenu(
-      BuildContext context, MenuProvider provider) async {
+  Future<void> _handleSaveMenu(MenuProvider provider) async {
     final validation = provider.validateCurrentMenu();
     if (validation != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -576,20 +492,30 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
       return;
     }
 
-    await provider.saveCurrentMenu();
+    try {
+      await provider.saveCurrentMenu();
 
-    if (context.mounted && provider.errorMessage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Menu saved successfully!'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      if (context.mounted && provider.errorMessage == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Menu saved successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error saving menu: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _handleResetCurrent(
-      BuildContext context, MenuProvider provider) async {
+  Future<void> _handleResetCurrent(MenuProvider provider) async {
     final shouldReset = await ConfirmationDialog.show(
       context,
       title: 'Reset Current Menu',
