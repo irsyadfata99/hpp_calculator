@@ -1,4 +1,4 @@
-// lib/services/menu_calculator_service.dart - FIXED VERSION: COMPLETE NULL SAFETY
+// lib/services/menu_calculator_service.dart - FIXED VERSION: NULL SAFETY OPERATORS
 
 import '../models/menu_model.dart';
 import '../models/shared_calculation_data.dart';
@@ -212,7 +212,7 @@ class MenuCalculatorService {
     return HPPCalculatorService.formatRupiah(amount);
   }
 
-  /// FIXED: Enhanced getAvailableIngredients with comprehensive null safety and validation
+  /// FIXED: Enhanced getAvailableIngredients with removed redundant null-aware operators
   /// Mendapatkan daftar ingredient yang tersedia dari variable costs
   /// Menghitung harga per satuan dengan benar sesuai rumus: Total Biaya ÷ Jumlah Bahan
   static List<Map<String, dynamic>> getAvailableIngredients(
@@ -227,12 +227,13 @@ class MenuCalculatorService {
 
     for (var item in variableCosts) {
       try {
-        // FIXED: Comprehensive null and type checking
-        final nama = item['nama']?.toString()?.trim() ?? '';
+        // FIXED: Comprehensive null and type checking with removed redundant operators
+        final nama = item['nama']?.toString().trim() ?? '';
         final totalHarga = _safeParseDouble(item['totalHarga']);
         final jumlah = _safeParseDouble(item['jumlah']);
+        // FIXED: Remove redundant null-aware operator - satuan is already being null-coalesced
         final satuan =
-            item['satuan']?.toString()?.trim() ?? AppConstants.defaultUnit;
+            item['satuan']?.toString().trim() ?? AppConstants.defaultUnit;
 
         // FIXED: Validate all required fields
         if (nama.isEmpty) {

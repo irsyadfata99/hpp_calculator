@@ -1,4 +1,5 @@
-// lib/providers/menu_provider.dart - FIXED VERSION: COMPLETE NULL SAFETY
+// lib/providers/menu_provider.dart - FIXED VERSION: PUBLIC ERROR HANDLING
+
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 // FIXED: Use explicit imports to avoid ambiguous imports
@@ -33,6 +34,42 @@ class MenuProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   MenuCalculationResult? get lastCalculationResult => _lastCalculationResult;
   SharedCalculationData? get sharedData => _sharedData;
+
+  // ===============================================
+  // FIXED: PUBLIC ERROR HANDLING METHODS
+  // ===============================================
+
+  /// FIXED: Public method for setting errors (called from UI)
+  void setError(String? error) {
+    _errorMessage = error;
+    notifyListeners();
+  }
+
+  /// FIXED: Public method for clearing errors
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  /// FIXED: Public method for setting loading state
+  void setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+
+  // ===============================================
+  // PRIVATE HELPER METHODS (INTERNAL USE ONLY)
+  // ===============================================
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+
+  void _setError(String? error) {
+    _errorMessage = error;
+    notifyListeners();
+  }
 
   // ===============================================
   // INITIALIZATION WITH STORAGE
@@ -465,23 +502,8 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // HELPER METHODS - FIXED ACCESS LEVELS
+  // RESET & CLEANUP METHODS
   // ===============================================
-
-  void _setLoading(bool loading) {
-    _isLoading = loading;
-    notifyListeners();
-  }
-
-  void _setError(String? error) {
-    _errorMessage = error;
-    notifyListeners();
-  }
-
-  void clearError() {
-    _errorMessage = null;
-    notifyListeners();
-  }
 
   void resetCurrentMenu() {
     _namaMenu = '';

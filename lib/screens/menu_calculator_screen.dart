@@ -1,4 +1,5 @@
-// lib/screens/menu_calculator_screen.dart - FIXED VERSION: COMPLETE ERROR HANDLING
+// lib/screens/menu_calculator_screen.dart - FIXED VERSION: PUBLIC METHOD CALLS
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/menu_provider.dart';
@@ -33,7 +34,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     final hppProvider = Provider.of<HPPProvider>(context, listen: false);
     final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-    // FIXED: Safe provider communication with validation
+    // FIXED: Safe provider communication with validation and public method calls
     try {
       if (hppProvider.data.variableCosts.isNotEmpty) {
         menuProvider.updateSharedData(hppProvider.data);
@@ -42,7 +43,8 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
       }
     } catch (e) {
       print('❌ Error setting up provider communication: $e');
-      menuProvider._setError(
+      // FIXED: Use public method instead of private _setError
+      menuProvider.setError(
           'Unable to load ingredient data. Please check HPP Calculator first.');
     }
   }
@@ -72,7 +74,8 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
               }
             } catch (e) {
               print('❌ Error updating shared data: $e');
-              menuProvider._setError(
+              // FIXED: Use public method instead of private _setError
+              menuProvider.setError(
                   'Unable to load ingredient data. Please check HPP Calculator first.');
             }
           });
@@ -267,6 +270,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             final hppProvider =
                 Provider.of<HPPProvider>(context, listen: false);
 
+            // FIXED: Use public methods instead of private methods
             menuProvider.clearError();
             hppProvider.clearError();
 
@@ -363,6 +367,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
               children: [
                 ElevatedButton.icon(
                   onPressed: () {
+                    // FIXED: Use public methods instead of private methods
                     menuProvider.clearError();
                     hppProvider.clearError();
                     Navigator.of(context).pop();
@@ -375,6 +380,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
                   onPressed: () {
+                    // FIXED: Use public methods instead of private methods
                     menuProvider.clearError();
                     hppProvider.clearError();
                     menuProvider.resetCurrentMenu();
