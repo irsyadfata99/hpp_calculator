@@ -1,4 +1,4 @@
-// lib/widgets/menu/menu_ingredient_selector_widget.dart - FIXED VERSION: WORKING UNIT CALCULATION + UI CONSISTENCY
+// lib/widgets/menu/menu_ingredient_selector_widget.dart - FIXED VERSION: PROPER LAYOUT ALIGNMENT
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,20 +39,20 @@ class MenuIngredientSelectorWidgetState
     _jumlahController.clear();
   }
 
-  // FIXED: Calculate cost with improved logic and better error handling
+  // Calculate cost with improved logic and better error handling
   double _calculateCost() {
     if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
       return 0.0;
     }
 
     try {
-      // FIXED: Safe ingredient lookup with orElse
+      // Safe ingredient lookup with orElse
       var ingredient = widget.availableIngredients.firstWhere(
         (item) => item['nama'] == _selectedIngredient,
         orElse: () => <String, dynamic>{}, // Return empty map if not found
       );
 
-      // FIXED: Validate ingredient was found and has required data
+      // Validate ingredient was found and has required data
       if (ingredient.isEmpty ||
           !ingredient.containsKey('totalHarga') ||
           !ingredient.containsKey('jumlah') ||
@@ -66,7 +66,7 @@ class MenuIngredientSelectorWidgetState
       double jumlah = double.tryParse(_jumlahController.text) ?? 0;
       if (jumlah <= 0) return 0.0;
 
-      // FIXED: Safe extraction of ingredient data
+      // Safe extraction of ingredient data
       double totalHarga = ingredient['totalHarga'] is num
           ? (ingredient['totalHarga'] as num).toDouble()
           : 0.0;
@@ -98,7 +98,7 @@ class MenuIngredientSelectorWidgetState
         print(
             '  Percentage calculation result: ${result.isSuccess ? result.cost : 'FAILED - ${result.errorMessage}'}');
       } else {
-        // FIXED: Unit mode with improved validation
+        // Unit mode with improved validation
         result = _calculateUnitCostFixed(
           totalPrice: totalHarga,
           packageQuantity: packageQuantity,
@@ -116,7 +116,7 @@ class MenuIngredientSelectorWidgetState
     }
   }
 
-  // FIXED: Custom unit cost calculation with better logic
+  // Custom unit cost calculation with better logic
   CalculationResult _calculateUnitCostFixed({
     required double totalPrice,
     required double packageQuantity,
@@ -128,9 +128,12 @@ class MenuIngredientSelectorWidgetState
       return CalculationResult.error('Invalid input values');
     }
 
-    // FIXED: Remove the strict constraint that was causing issues
-    // Allow using more than package quantity if needed (for conversion scenarios)
-    // This is common in cooking where you buy 1kg but use 1.5kg across multiple purchases
+    // Allow flexible unit conversion scenarios
+    if (unitsUsed > packageQuantity * 10) {
+      // Allow up to 10x original price as safety check
+      return CalculationResult.error(
+          'Hasil perhitungan terlalu besar, periksa kembali jumlah');
+    }
 
     // Calculate unit price and total cost
     double pricePerUnit = totalPrice / packageQuantity;
@@ -138,7 +141,6 @@ class MenuIngredientSelectorWidgetState
 
     // Validate result is reasonable
     if (totalCost > totalPrice * 10) {
-      // Allow up to 10x original price as safety check
       return CalculationResult.error(
           'Hasil perhitungan terlalu besar, periksa kembali jumlah');
     }
@@ -152,7 +154,7 @@ class MenuIngredientSelectorWidgetState
     );
   }
 
-  // FIXED: Get unit price with same null safety pattern
+  // Get unit price with same null safety pattern
   double _getUnitPrice() {
     if (_selectedIngredient == null) return 0.0;
 
@@ -182,7 +184,7 @@ class MenuIngredientSelectorWidgetState
     }
   }
 
-  // FIXED: Build helper info dengan informasi yang lebih jelas
+  // Build helper info dengan informasi yang lebih jelas
   Widget _buildCalculationHelper() {
     if (_selectedIngredient == null) return const SizedBox.shrink();
 
@@ -321,7 +323,7 @@ class MenuIngredientSelectorWidgetState
     );
   }
 
-  // FIXED: Build validation warning
+  // Build validation warning
   Widget _buildValidationWarning() {
     if (_selectedSatuan != '%' || _jumlahController.text.isEmpty) {
       return const SizedBox.shrink();
@@ -417,7 +419,7 @@ class MenuIngredientSelectorWidgetState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header - FIXED: Same style as HPP calculator
+            // Header - Same style as HPP calculator
             _buildHeader(),
 
             const SizedBox(height: 16),
@@ -436,7 +438,7 @@ class MenuIngredientSelectorWidgetState
   Widget _buildHeader() {
     return Row(
       children: [
-        // FIXED: Same icon and color scheme as HPP calculator
+        // Same icon and color scheme as HPP calculator
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -493,26 +495,27 @@ class MenuIngredientSelectorWidgetState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // FIXED: Same form style as HPP calculator
+        // Same form style as HPP calculator
         const Text('Tambah Bahan ke Menu:',
             style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
 
-        // Dropdown Pilih Bahan - FIXED: No icon
+        // Dropdown Pilih Bahan
         _buildIngredientDropdown(),
 
         const SizedBox(height: 12),
 
-        // Row untuk Jumlah dan Satuan - FIXED: Same layout as HPP
+        // FIXED: Row untuk Jumlah dan Satuan dengan proper alignment
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Input Jumlah - FIXED: No icon
+            // Input Jumlah
             Expanded(
               flex: 2,
               child: _buildJumlahInput(),
             ),
             const SizedBox(width: 12),
-            // Dropdown Satuan - FIXED: Same style as HPP
+            // FIXED: Dropdown Satuan dengan proper height alignment
             Expanded(
               child: _buildSatuanDropdown(usageUnits),
             ),
@@ -527,7 +530,7 @@ class MenuIngredientSelectorWidgetState
 
         const SizedBox(height: 16),
 
-        // Tombol Tambah - FIXED: Same style as HPP
+        // Tombol Tambah - Same style as HPP
         _buildAddButton(),
       ],
     );
@@ -539,7 +542,8 @@ class MenuIngredientSelectorWidgetState
       decoration: const InputDecoration(
         labelText: 'Pilih Bahan',
         hintText: 'Pilih dari daftar belanja',
-        // FIXED: No prefix icon
+        border: OutlineInputBorder(),
+        filled: true,
       ),
       items: widget.availableIngredients.map((ingredient) {
         String nama = ingredient['nama']?.toString() ?? 'Unknown';
@@ -595,8 +599,9 @@ class MenuIngredientSelectorWidgetState
       decoration: InputDecoration(
         labelText: 'Jumlah',
         hintText: hint,
-        // FIXED: No prefix icon
         helperText: helper,
+        border: const OutlineInputBorder(),
+        filled: true,
       ),
       onChanged: (value) {
         setState(() {}); // Update real-time calculation
@@ -604,34 +609,35 @@ class MenuIngredientSelectorWidgetState
     );
   }
 
+  // FIXED: Satuan dropdown dengan proper height alignment
   Widget _buildSatuanDropdown(List<String> units) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[50],
+    return DropdownButtonFormField<String>(
+      value: _selectedSatuan,
+      decoration: const InputDecoration(
+        labelText: 'Satuan',
+        border: OutlineInputBorder(),
+        filled: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       ),
-      child: DropdownButton<String>(
-        value: _selectedSatuan,
-        underline: const SizedBox.shrink(),
-        items: units.map((satuan) {
-          String displayText = satuan;
-          if (satuan == '%') {
-            displayText = '% (Persentase)';
-          }
-          return DropdownMenuItem<String>(
-            value: satuan,
-            child: Text(displayText),
-          );
-        }).toList(),
-        onChanged: (value) {
-          setState(() {
-            _selectedSatuan = value ?? '%';
-            _jumlahController.clear();
-          });
-        },
-      ),
+      items: units.map((satuan) {
+        String displayText = satuan;
+        if (satuan == '%') {
+          displayText = '% (Persentase)';
+        }
+        return DropdownMenuItem<String>(
+          value: satuan,
+          child: Text(
+            displayText,
+            style: const TextStyle(fontSize: 14),
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedSatuan = value ?? '%';
+          _jumlahController.clear();
+        });
+      },
     );
   }
 

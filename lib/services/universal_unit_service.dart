@@ -1,43 +1,35 @@
-// lib/services/universal_unit_service.dart - FIXED VERSION: WORKING UNIT CALCULATIONS
+// lib/services/universal_unit_service.dart - FIXED VERSION: PROPER INDONESIAN UNITS
 
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import '../utils/formatters.dart';
 
 class UniversalUnitService {
-  /// Generic package units untuk semua jenis UMKM
+  /// Units untuk belanja bahan (HPP Calculator) - sesuai permintaan user
   static List<String> getPackageUnits() {
     return [
-      AppConstants.defaultUnit, // Using constant for default unit
-      'pack', // Package/packaging
-      'box', // Box/carton
-      'bottle', // Bottle/container
-      'roll', // Roll (fabric, paper, etc)
-      'lembar', // Sheet/piece
-      'kg', // Weight
-      'gram', // Weight small
-      'liter', // Volume
-      'ml', // Volume small
-      'meter', // Length
-      'yard', // Length (fabric)
-      'set', // Set/collection
+      'Ton',
+      'Kuintal',
+      'Kilogram (kg)',
+      'Liter (L)',
+      'Lusin',
+      'Gross',
+      'Meter (m)',
+      'Pack',
     ];
   }
 
-  /// Generic usage units untuk komposisi
+  /// Units untuk komposisi menu (Menu Calculator) - sesuai permintaan user
   static List<String> getUsageUnits() {
     return [
       AppConstants
-          .defaultUsageUnit, // Using constant for default usage unit (%)
-      AppConstants.defaultUnit, // Piece/unit
-      'gram', // Weight
-      'ml', // Volume
-      'meter', // Length
-      'lembar', // Sheet
-      'potong', // Cut/piece
-      'porsi', // Portion
-      'kg', // Weight
-      'liter', // Volume
+          .defaultUsageUnit, // % (Persentase) - tetap ada untuk fleksibilitas
+      'Kilogram (kg)',
+      'Gram (gr)',
+      'Ons',
+      'Mililiter (ml)',
+      'Centimeter (cm)',
+      'pcs (pieces)',
     ];
   }
 
@@ -90,7 +82,7 @@ class UniversalUnitService {
     );
   }
 
-  /// FIXED: Calculate cost berdasarkan unit exact dengan validation yang lebih fleksibel
+  /// Calculate cost berdasarkan unit exact dengan validation yang lebih fleksibel
   static CalculationResult calculateUnitCost({
     required double totalPrice,
     required double packageQuantity,
@@ -126,12 +118,7 @@ class UniversalUnitService {
       return CalculationResult.error('Jumlah melebihi batas maksimal');
     }
 
-    // FIXED: Remove strict constraint yang menyebabkan bug
-    // Dalam memasak, seringkali kita beli 1kg tapi pakai 1.5kg dari beberapa pembelian
-    // Atau beli dalam satuan besar tapi pakai dalam satuan kecil (1 botol = 1000ml, pakai 50ml)
-    // Jadi tidak perlu constraint ketat unitsUsed <= packageQuantity
-
-    // FIXED: Add reasonable upper limit instead of strict equality
+    // Allow flexible unit conversion scenarios
     if (unitsUsed > packageQuantity * 50) {
       // Allow up to 50x for unit conversion scenarios
       return CalculationResult.error(
@@ -147,7 +134,6 @@ class UniversalUnitService {
       return CalculationResult.error('Hasil perhitungan terlalu besar');
     }
 
-    // FIXED: Better success message with more info
     return CalculationResult.success(
       cost: totalCost,
       calculation:
@@ -172,20 +158,20 @@ class UniversalUnitService {
       case 'kuliner':
         return UsageSuggestion(
           businessType: 'FnB/Makanan',
-          primaryUnit: AppConstants.defaultUsageUnit, // %
-          secondaryUnits: ['gram', 'ml', 'unit'],
+          primaryUnit: 'Gram (gr)', // Lebih praktis untuk masakan
+          secondaryUnits: ['Kilogram (kg)', 'Mililiter (ml)', 'pcs (pieces)'],
           examples: [
-            'Selai: 5% dari 1 toples (${AppConstants.defaultUsageUnit})',
-            'Mentega: 3% dari 1 bungkus (${AppConstants.defaultUsageUnit})',
-            'Bumbu: 2% dari 1 pack (${AppConstants.defaultUsageUnit})',
-            'Telur: 2 unit dari 1 tray (unit)',
+            'Beras: 200 gram per porsi',
+            'Santan: 100 mililiter per porsi',
+            'Telur: 1 pcs per porsi',
+            'Daging: 150 gram per porsi',
           ],
           description:
-              'Gunakan persentase untuk bahan makanan cair/bubuk, unit untuk barang satuan',
+              'Gunakan gram untuk bahan makanan padat, mililiter untuk cairan',
           advantages: [
-            'Mudah menghitung proporsi',
-            'Fleksibel untuk berbagai ukuran pembelian',
-            'Cocok untuk resep yang bisa di-scale',
+            'Presisi tinggi untuk resep',
+            'Mudah diukur di dapur',
+            'Cocok untuk kontrol porsi',
           ],
         );
 
@@ -195,87 +181,23 @@ class UniversalUnitService {
       case 'tekstil':
         return UsageSuggestion(
           businessType: 'Konveksi/Fashion',
-          primaryUnit: 'meter',
-          secondaryUnits: [AppConstants.defaultUsageUnit, 'unit', 'lembar'],
-          examples: [
-            'Kain: 0.8 meter dari 1 roll (meter)',
-            'Benang: 10% dari 1 gulung (${AppConstants.defaultUsageUnit})',
-            'Kancing: 5 unit dari 1 pack (unit)',
-            'Furing: 0.5 meter dari 1 roll (meter)',
+          primaryUnit: 'Centimeter (cm)',
+          secondaryUnits: [
+            'Meter (m)',
+            AppConstants.defaultUsageUnit,
+            'pcs (pieces)'
           ],
-          description:
-              'Gunakan meter untuk kain, ${AppConstants.defaultUsageUnit} untuk aksesoris kecil, unit untuk barang satuan',
+          examples: [
+            'Kain: 80 centimeter per kaos',
+            'Benang: 5% dari 1 gulung',
+            'Kancing: 5 pcs per baju',
+            'Resleting: 60 centimeter per celana',
+          ],
+          description: 'Gunakan centimeter untuk kain, pcs untuk aksesoris',
           advantages: [
-            'Presisi untuk penggunaan kain',
+            'Presisi untuk pemotongan kain',
             'Mudah menghitung kebutuhan material',
-            'Standard industri garment',
-          ],
-        );
-
-      case 'atk':
-      case 'stationery':
-      case 'alat tulis':
-        return UsageSuggestion(
-          businessType: 'ATK/Stationery',
-          primaryUnit: AppConstants.defaultUnit, // unit
-          secondaryUnits: ['lembar', AppConstants.defaultUsageUnit, 'ml'],
-          examples: [
-            'Pensil: 1 unit dari 1 box (${AppConstants.defaultUnit})',
-            'Kertas: 10 lembar dari 1 pack (lembar)',
-            'Tinta: 5% dari 1 bottle (${AppConstants.defaultUsageUnit})',
-            'Spidol: 1 unit dari 1 set (${AppConstants.defaultUnit})',
-          ],
-          description:
-              'Gunakan unit untuk barang satuan, lembar untuk kertas, ${AppConstants.defaultUsageUnit} untuk cairan',
-          advantages: [
-            'Mudah menghitung satuan',
-            'Cocok untuk inventory barang',
-            'Sesuai kebiasaan toko ATK',
-          ],
-        );
-
-      case 'service':
-      case 'jasa':
-      case 'bengkel':
-      case 'otomotif':
-        return UsageSuggestion(
-          businessType: 'Service/Jasa',
-          primaryUnit: AppConstants.defaultUsageUnit, // %
-          secondaryUnits: [AppConstants.defaultUnit, 'liter', 'ml'],
-          examples: [
-            'Oli: 10% dari 1 galon (${AppConstants.defaultUsageUnit})',
-            'Suku cadang: 1 unit dari 1 set (${AppConstants.defaultUnit})',
-            'Bahan kimia: 5% dari 1 bottle (${AppConstants.defaultUsageUnit})',
-            'Cairan pembersih: 50 ml dari 1 liter (ml)',
-          ],
-          description:
-              'Gunakan ${AppConstants.defaultUsageUnit} untuk bahan habis pakai, unit untuk spare part',
-          advantages: [
-            'Fleksibel untuk berbagai jenis service',
-            'Mudah menghitung konsumsi bahan',
-            'Cocok untuk charging customer',
-          ],
-        );
-
-      case 'retail':
-      case 'toko':
-      case 'grosir':
-        return UsageSuggestion(
-          businessType: 'Retail/Toko',
-          primaryUnit: AppConstants.defaultUnit, // unit
-          secondaryUnits: [AppConstants.defaultUsageUnit, 'pack', 'box'],
-          examples: [
-            'Produk satuan: 1 unit dari 1 pack (${AppConstants.defaultUnit})',
-            'Kemasan besar: 10% dari 1 karton (${AppConstants.defaultUsageUnit})',
-            'Sample: 1 unit dari 1 box (${AppConstants.defaultUnit})',
-            'Repack: 5 unit dari 1 pack besar (${AppConstants.defaultUnit})',
-          ],
-          description:
-              'Gunakan unit untuk barang satuan, ${AppConstants.defaultUsageUnit} untuk repacking',
-          advantages: [
-            'Sesuai dengan sistem POS',
-            'Mudah tracking inventory',
-            'Cocok untuk berbagai jenis produk',
+            'Standard industri garment Indonesia',
           ],
         );
 
@@ -289,12 +211,12 @@ class UniversalUnitService {
     return UsageSuggestion(
       businessType: 'Umum',
       primaryUnit: AppConstants.defaultUsageUnit, // %
-      secondaryUnits: [AppConstants.defaultUnit, 'pack', 'box'],
+      secondaryUnits: ['Kilogram (kg)', 'Gram (gr)', 'pcs (pieces)'],
       examples: [
-        'Bahan A: 5% dari pembelian (${AppConstants.defaultUsageUnit})',
-        'Bahan B: 10% dari total (${AppConstants.defaultUsageUnit})',
-        'Bahan C: 3% dari stock (${AppConstants.defaultUsageUnit})',
-        'Komponen: 2 unit dari 1 set (${AppConstants.defaultUnit})',
+        'Bahan A: 5% dari pembelian',
+        'Bahan B: 200 gram per produk',
+        'Komponen: 2 pcs per unit',
+        'Material: 1 kilogram per batch',
       ],
       description:
           'Persentase cocok untuk semua jenis usaha, mudah dipahami dan dihitung',
@@ -420,35 +342,21 @@ class UniversalUnitService {
         id: 'fnb',
         name: 'FnB/Makanan',
         description: 'Makanan, minuman, kuliner',
-        recommendedUnit: AppConstants.defaultUsageUnit,
+        recommendedUnit: 'Gram (gr)',
         examples: ['Warung', 'Restoran', 'Catering', 'Bakery'],
       ),
       BusinessTypeInfo(
         id: 'konveksi',
         name: 'Konveksi/Fashion',
         description: 'Garment, tekstil, fashion',
-        recommendedUnit: 'meter',
+        recommendedUnit: 'Centimeter (cm)',
         examples: ['Konveksi', 'Tailor', 'Fashion', 'Bordir'],
-      ),
-      BusinessTypeInfo(
-        id: 'atk',
-        name: 'ATK/Stationery',
-        description: 'Alat tulis, perlengkapan kantor',
-        recommendedUnit: AppConstants.defaultUnit,
-        examples: ['Toko ATK', 'Percetakan', 'Fotocopy', 'Binding'],
-      ),
-      BusinessTypeInfo(
-        id: 'service',
-        name: 'Service/Jasa',
-        description: 'Bengkel, service, reparasi',
-        recommendedUnit: AppConstants.defaultUsageUnit,
-        examples: ['Bengkel Motor', 'Service AC', 'Elektronik', 'Komputer'],
       ),
       BusinessTypeInfo(
         id: 'retail',
         name: 'Retail/Toko',
         description: 'Toko, grosir, eceran',
-        recommendedUnit: AppConstants.defaultUnit,
+        recommendedUnit: 'pcs (pieces)',
         examples: ['Mini Market', 'Grosir', 'Online Shop', 'Toko Kelontong'],
       ),
       BusinessTypeInfo(
@@ -471,46 +379,53 @@ class UniversalUnitService {
       return AppConstants.defaultUsageUnit;
     }
 
-    // Liquid/powder materials - use percentage
+    // Liquid materials - use mililiter
     if (name.contains('minyak') ||
         name.contains('air') ||
         name.contains('susu') ||
         name.contains('kecap') ||
         name.contains('saos') ||
         name.contains('sirup') ||
-        name.contains('tepung') ||
+        name.contains('santan')) {
+      return 'Mililiter (ml)';
+    }
+
+    // Powder/grain materials - use gram
+    if (name.contains('tepung') ||
         name.contains('gula') ||
         name.contains('garam') ||
         name.contains('bumbu') ||
-        name.contains('rempah')) {
-      return AppConstants.defaultUsageUnit; // %
+        name.contains('rempah') ||
+        name.contains('beras')) {
+      return 'Gram (gr)';
     }
 
-    // Fabric materials - use meter
+    // Heavy materials - use kilogram
+    if (name.contains('daging') ||
+        name.contains('ayam') ||
+        name.contains('ikan') ||
+        name.contains('sayur')) {
+      return 'Kilogram (kg)';
+    }
+
+    // Fabric materials - use centimeter
     if (name.contains('kain') ||
         name.contains('bahan') ||
         name.contains('katun') ||
         name.contains('polyester') ||
         name.contains('sutra') ||
         name.contains('denim')) {
-      return 'meter';
+      return 'Centimeter (cm)';
     }
 
-    // Individual items - use unit
+    // Individual items - use pieces
     if (name.contains('telur') ||
         name.contains('bawang') ||
         name.contains('kancing') ||
         name.contains('resleting') ||
         name.contains('pensil') ||
         name.contains('pulpen')) {
-      return AppConstants.defaultUnit; // unit
-    }
-
-    // Paper materials - use lembar
-    if (name.contains('kertas') ||
-        name.contains('karton') ||
-        name.contains('amplop')) {
-      return 'lembar';
+      return 'pcs (pieces)';
     }
 
     // Default to percentage for flexibility
