@@ -1,4 +1,4 @@
-// lib/main.dart - PHASE 1: CRITICAL IMPORT FIX
+// lib/main.dart - SIMPLIFIED VERSION (NO fromEnvironment)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -9,7 +9,6 @@ import 'screens/operational_calculator_screen.dart';
 import 'screens/menu_calculator_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/constants.dart';
-// FIXED: Correct import for DataSyncController
 import 'services/data_sync_controller.dart';
 
 void main() async {
@@ -58,7 +57,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
   bool _isInitialized = false;
   String? _initError;
 
-  // FIXED: Centralized data synchronization controller
   final DataSyncController _syncController = DataSyncController();
 
   @override
@@ -85,7 +83,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           Provider.of<OperationalProvider>(context, listen: false);
       final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-      // FIXED: Initialize providers INDEPENDENTLY - NO CROSS-COMMUNICATION
       debugPrint('📊 Initializing HPP Provider...');
       await hppProvider.initializeFromStorage();
 
@@ -95,7 +92,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       debugPrint('🍽️ Initializing Menu Provider...');
       await menuProvider.initializeFromStorage();
 
-      // FIXED: Setup centralized sync controller AFTER initialization
       _syncController.initialize(
         hppProvider: hppProvider,
         operationalProvider: operationalProvider,
@@ -109,6 +105,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           _isInitialized = true;
           _initError = null;
         });
+
+        // SIMPLIFIED AUTO DEBUG
+        _startSimpleDebug();
       }
     } catch (e, stackTrace) {
       debugPrint('❌ Critical initialization error: $e');
@@ -121,6 +120,18 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         });
       }
     }
+  }
+
+  // SIMPLIFIED DEBUG - NO COMPLEX OPERATIONS
+  void _startSimpleDebug() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted || !_syncController.isInitialized) return;
+
+      debugPrint('🔍 ===== SIMPLE DEBUG START =====');
+      _syncController.printDetailedDebugInfo();
+      _syncController.forceFullSync();
+      debugPrint('🔍 ===== SIMPLE DEBUG END =====');
+    });
   }
 
   @override
@@ -174,7 +185,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // FIXED: Simple navigation without automatic syncing
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -192,6 +202,16 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               hppProvider, operationalProvider, menuProvider);
         },
       ),
+      // SIMPLE DEBUG BUTTON - ALWAYS SHOW FOR NOW
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          debugPrint('🔧 Manual Debug');
+          _syncController.emergencyDiagnostic();
+        },
+        backgroundColor: Colors.purple,
+        child: const Icon(Icons.bug_report),
+        mini: true,
+      ),
     );
   }
 
@@ -203,10 +223,10 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     return BottomNavigationBar(
       currentIndex: _currentIndex,
       onTap: (index) {
+        debugPrint('🔄 Tab switching: $_currentIndex → $index');
         setState(() {
           _currentIndex = index;
         });
-        // FIXED: Manual sync only when switching tabs
         _syncController.syncOnTabSwitch();
       },
       type: BottomNavigationBarType.fixed,

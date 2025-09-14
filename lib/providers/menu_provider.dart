@@ -276,6 +276,9 @@ class MenuProvider with ChangeNotifier {
   // MENU COMPOSITION CRUD METHODS - FIXED TYPES
   // ===============================================
 
+  // FIXED: Update addIngredient method di MenuProvider (line ~200-an)
+// Replace method ini di lib/providers/menu_provider.dart
+
   Future<void> addIngredient(String namaIngredient, double jumlahDipakai,
       String satuan, double hargaPerSatuan) async {
     // DEBUG: Print what we're trying to add
@@ -286,7 +289,7 @@ class MenuProvider with ChangeNotifier {
     print('  hargaPerSatuan: $hargaPerSatuan');
     print('  Current _komposisiMenu length: ${_komposisiMenu.length}');
 
-    // Validate inputs
+    // Validate inputs - FIXED: Different validation for unit prices
     final namaValidation = InputValidator.validateName(namaIngredient);
     if (namaValidation != null) {
       print('❌ Name validation failed: $namaValidation');
@@ -302,11 +305,19 @@ class MenuProvider with ChangeNotifier {
       return;
     }
 
-    final hargaValidation =
-        InputValidator.validatePrice(hargaPerSatuan.toString());
-    if (hargaValidation != null) {
-      print('❌ Price validation failed: $hargaValidation');
-      _setError('Harga per satuan: $hargaValidation');
+    // FIXED: Custom validation for unit prices in menu composition
+    // Unit prices can be very small (e.g., Rp 30 per gram) due to unit conversion
+    if (hargaPerSatuan <= 0) {
+      print('❌ Unit price validation failed: must be positive');
+      _setError('Harga per satuan harus lebih dari 0');
+      return;
+    }
+
+    if (hargaPerSatuan > 1000000) {
+      // Reasonable max: 1 million per unit
+      print('❌ Unit price validation failed: too expensive');
+      _setError(
+          'Harga per satuan terlalu mahal (maksimal Rp 1,000,000 per unit)');
       return;
     }
 

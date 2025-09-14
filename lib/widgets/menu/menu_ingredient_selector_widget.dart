@@ -1,4 +1,4 @@
-// lib/widgets/menu/menu_ingredient_selector_widget.dart - FIXED UNIT CONVERSION
+// lib/widgets/menu/menu_ingredient_selector_widget.dart - DIAGNOSTIC VERSION
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,27 +25,28 @@ class MenuIngredientSelectorWidgetState
   String _selectedSatuan = '%';
   final _jumlahController = TextEditingController();
 
-  // Cache unique ingredients to prevent dropdown errors
-  List<Map<String, dynamic>> get _uniqueIngredients {
-    final Map<String, Map<String, dynamic>> uniqueMap = {};
+  // Enhanced debugging
+  bool _debugMode = true;
 
-    for (var ingredient in widget.availableIngredients) {
-      String nama = ingredient['nama']?.toString() ?? 'Unknown';
-
-      if (nama.trim().isEmpty || nama == 'Unknown') continue;
-
-      double jumlah = (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
-      String satuan = ingredient['satuan']?.toString() ?? 'unit';
-      double totalHarga = (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
-
-      String uniqueKey = '${nama}_${jumlah}_${satuan}_${totalHarga.toInt()}';
-
-      if (!uniqueMap.containsKey(uniqueKey)) {
-        uniqueMap[uniqueKey] = ingredient;
-      }
+  void _debugPrint(String message) {
+    if (_debugMode) {
+      debugPrint('🔍 MenuIngredientSelector: $message');
     }
+  }
 
-    return uniqueMap.values.toList();
+  @override
+  void initState() {
+    super.initState();
+    _debugPrint('Widget initialized');
+    _debugPrint(
+        'Available ingredients count: ${widget.availableIngredients.length}');
+
+    // Print ingredient details for debugging
+    for (int i = 0; i < widget.availableIngredients.length; i++) {
+      final ingredient = widget.availableIngredients[i];
+      _debugPrint(
+          'Ingredient $i: ${ingredient['nama']} - ${ingredient['jumlah']} ${ingredient['satuan']} @ ${ingredient['totalHarga']}');
+    }
   }
 
   @override
@@ -54,48 +55,54 @@ class MenuIngredientSelectorWidgetState
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _validateSelectedIngredient();
-    });
-  }
+  List<Map<String, dynamic>> get _uniqueIngredients {
+    _debugPrint('Processing unique ingredients...');
+    final Map<String, Map<String, dynamic>> uniqueMap = {};
 
-  @override
-  void didUpdateWidget(MenuIngredientSelectorWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _validateSelectedIngredient();
-  }
-
-  void _validateSelectedIngredient() {
-    if (_selectedIngredient != null) {
-      final uniqueIngredients = _uniqueIngredients;
-      bool isValid = uniqueIngredients.any((ingredient) {
+    for (var ingredient in widget.availableIngredients) {
+      try {
         String nama = ingredient['nama']?.toString() ?? 'Unknown';
-        return nama == _selectedIngredient;
-      });
+        if (nama.trim().isEmpty || nama == 'Unknown') {
+          _debugPrint('Skipping ingredient with invalid name: $nama');
+          continue;
+        }
 
-      if (!isValid) {
-        setState(() {
-          _selectedIngredient = null;
-          _jumlahController.clear();
-        });
+        double jumlah = (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
+        String satuan = ingredient['satuan']?.toString() ?? 'unit';
+        double totalHarga =
+            (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
+
+        if (jumlah <= 0 || totalHarga <= 0) {
+          _debugPrint(
+              'Skipping ingredient with invalid data: $nama (jumlah: $jumlah, harga: $totalHarga)');
+          continue;
+        }
+
+        String uniqueKey = '${nama}_${jumlah}_${satuan}_${totalHarga.toInt()}';
+
+        if (!uniqueMap.containsKey(uniqueKey)) {
+          uniqueMap[uniqueKey] = ingredient;
+          _debugPrint('Added unique ingredient: $nama');
+        } else {
+          _debugPrint('Duplicate ingredient skipped: $nama');
+        }
+      } catch (e) {
+        _debugPrint('Error processing ingredient: $e');
       }
     }
+
+    _debugPrint('Unique ingredients count: ${uniqueMap.length}');
+    return uniqueMap.values.toList();
   }
 
-  void _resetForm() {
-    setState(() {
-      _selectedIngredient = null;
-      _selectedSatuan = '%';
-    });
-    _jumlahController.clear();
-  }
-
-  // FIXED: Proper calculation with unit conversion
   double _calculateCost() {
+    _debugPrint('Calculating cost...');
+    _debugPrint('Selected ingredient: $_selectedIngredient');
+    _debugPrint('Selected satuan: $_selectedSatuan');
+    _debugPrint('Jumlah input: ${_jumlahController.text}');
+
     if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
+      _debugPrint('Cannot calculate: missing ingredient or quantity');
       return 0.0;
     }
 
@@ -106,19 +113,35 @@ class MenuIngredientSelectorWidgetState
         orElse: () => <String, dynamic>{},
       );
 
-      if (ingredient.isEmpty) return 0.0;
+      if (ingredient.isEmpty) {
+        _debugPrint('Cannot find ingredient data for: $_selectedIngredient');
+        return 0.0;
+      }
 
       double jumlah = double.tryParse(_jumlahController.text) ?? 0;
-      if (jumlah <= 0) return 0.0;
+      if (jumlah <= 0) {
+        _debugPrint('Invalid quantity: $jumlah');
+        return 0.0;
+      }
 
       double totalHarga = (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
       double packageQuantity =
           (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
       String packageUnit = ingredient['satuan']?.toString() ?? 'unit';
 
-      if (totalHarga <= 0 || packageQuantity <= 0) return 0.0;
+      _debugPrint('Calculation inputs:');
+      _debugPrint('  totalHarga: $totalHarga');
+      _debugPrint('  packageQuantity: $packageQuantity');
+      _debugPrint('  packageUnit: $packageUnit');
+      _debugPrint('  usageAmount: $jumlah');
+      _debugPrint('  usageUnit: $_selectedSatuan');
 
-      // FIXED: Use smart calculation with proper unit conversion
+      if (totalHarga <= 0 || packageQuantity <= 0) {
+        _debugPrint(
+            'Invalid ingredient data: totalHarga=$totalHarga, packageQuantity=$packageQuantity');
+        return 0.0;
+      }
+
       CalculationResult result = UniversalUnitService.calculateSmartCost(
         totalPrice: totalHarga,
         packageQuantity: packageQuantity,
@@ -128,105 +151,116 @@ class MenuIngredientSelectorWidgetState
       );
 
       if (!result.isSuccess) {
-        debugPrint('❌ Calculation error: ${result.errorMessage}');
+        _debugPrint('Calculation error: ${result.errorMessage}');
         return 0.0;
       }
 
-      debugPrint('✅ Calculation success: ${result.calculation}');
+      _debugPrint('Calculation success: ${result.calculation}');
+      _debugPrint('Result cost: ${result.cost}');
       return result.cost;
-    } catch (e) {
-      debugPrint('❌ Error calculating cost: $e');
+    } catch (e, stackTrace) {
+      _debugPrint('Error calculating cost: $e');
+      _debugPrint('Stack trace: $stackTrace');
       return 0.0;
     }
   }
 
-  // FIXED: Enhanced cost display with calculation details
-  String _getCalculationDetails() {
-    if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
-      return '';
-    }
+  void _addIngredient() {
+    _debugPrint('=== ADD INGREDIENT PROCESS START ===');
 
     try {
-      final uniqueIngredients = _uniqueIngredients;
-      final ingredient = uniqueIngredients.firstWhere(
-        (item) => item['nama']?.toString() == _selectedIngredient,
-        orElse: () => <String, dynamic>{},
-      );
-
-      if (ingredient.isEmpty) return '';
-
-      double jumlah = double.tryParse(_jumlahController.text) ?? 0;
-      if (jumlah <= 0) return '';
-
-      double totalHarga = (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
-      double packageQuantity =
-          (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
-      String packageUnit = ingredient['satuan']?.toString() ?? 'unit';
-
-      // Get calculation result
-      CalculationResult result = UniversalUnitService.calculateSmartCost(
-        totalPrice: totalHarga,
-        packageQuantity: packageQuantity,
-        packageUnit: packageUnit,
-        usageAmount: jumlah,
-        usageUnit: _selectedSatuan,
-      );
-
-      if (result.isSuccess) {
-        return result.calculation ?? '';
-      } else {
-        return 'Error: ${result.errorMessage}';
+      if (_selectedIngredient == null) {
+        _debugPrint('❌ Cannot add: No ingredient selected');
+        _showError('Please select an ingredient');
+        return;
       }
-    } catch (e) {
-      return 'Calculation error';
+
+      if (_jumlahController.text.isEmpty) {
+        _debugPrint('❌ Cannot add: No quantity entered');
+        _showError('Please enter quantity');
+        return;
+      }
+
+      double? jumlah = double.tryParse(_jumlahController.text);
+      if (jumlah == null || jumlah <= 0) {
+        _debugPrint(
+            '❌ Cannot add: Invalid quantity: ${_jumlahController.text}');
+        _showError('Please enter valid quantity');
+        return;
+      }
+
+      double cost = _calculateCost();
+      if (cost <= 0) {
+        _debugPrint('❌ Cannot add: Invalid cost calculation result: $cost');
+        _showError('Invalid cost calculation');
+        return;
+      }
+
+      double unitPrice = cost / jumlah;
+      _debugPrint('Calculated unit price: $unitPrice');
+
+      _debugPrint('Calling onAddIngredient with parameters:');
+      _debugPrint('  namaIngredient: $_selectedIngredient');
+      _debugPrint('  jumlahDipakai: $jumlah');
+      _debugPrint('  satuan: $_selectedSatuan');
+      _debugPrint('  hargaPerSatuan: $unitPrice');
+
+      // Call the callback
+      widget.onAddIngredient(
+        _selectedIngredient!,
+        jumlah,
+        _selectedSatuan,
+        unitPrice,
+      );
+
+      _debugPrint('✅ onAddIngredient callback completed successfully');
+
+      // Reset form
+      _resetForm();
+
+      _showSuccess('✅ Ingredient added successfully!');
+      _debugPrint('=== ADD INGREDIENT PROCESS COMPLETED ===');
+    } catch (e, stackTrace) {
+      _debugPrint('❌ Error in _addIngredient: $e');
+      _debugPrint('Stack trace: $stackTrace');
+      _showError('Error adding ingredient: ${e.toString()}');
+      _debugPrint('=== ADD INGREDIENT PROCESS FAILED ===');
     }
   }
 
-  void _addIngredient() {
-    if (_selectedIngredient != null && _jumlahController.text.isNotEmpty) {
-      double? jumlah = double.tryParse(_jumlahController.text);
-      if (jumlah != null && jumlah > 0) {
-        double cost = _calculateCost();
-        if (cost > 0) {
-          // FIXED: Calculate proper unit price for the actual usage unit
-          double unitPrice = cost / jumlah;
+  void _resetForm() {
+    _debugPrint('Resetting form...');
+    setState(() {
+      _selectedIngredient = null;
+      _selectedSatuan = '%';
+    });
+    _jumlahController.clear();
+    _debugPrint('Form reset completed');
+  }
 
-          try {
-            widget.onAddIngredient(
-              _selectedIngredient!,
-              jumlah,
-              _selectedSatuan,
-              unitPrice,
-            );
-            _resetForm();
+  void _showError(String message) {
+    _debugPrint('Showing error: $message');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ $message'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
 
-            // Show success message with calculation details
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content:
-                    Text('✅ Ingredient added: ${_getCalculationDetails()}'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          } catch (e) {
-            debugPrint('❌ Error adding ingredient: $e');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('❌ Error adding ingredient: ${e.toString()}'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Invalid calculation result'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
+  void _showSuccess(String message) {
+    _debugPrint('Showing success: $message');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -240,12 +274,59 @@ class MenuIngredientSelectorWidgetState
           children: [
             _buildHeader(),
             const SizedBox(height: 16),
+
+            // Debug info panel
+            if (_debugMode) _buildDebugPanel(),
+
             if (_uniqueIngredients.isEmpty)
               _buildEmptyIngredientsWarning()
             else
               _buildIngredientSelector(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDebugPanel() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bug_report, size: 16, color: Colors.purple),
+              const SizedBox(width: 8),
+              const Text('Debug Info',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Switch(
+                value: _debugMode,
+                onChanged: (value) => setState(() => _debugMode = value),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('Available: ${widget.availableIngredients.length}',
+              style: const TextStyle(fontSize: 12)),
+          Text('Unique: ${_uniqueIngredients.length}',
+              style: const TextStyle(fontSize: 12)),
+          Text('Selected: $_selectedIngredient',
+              style: const TextStyle(fontSize: 12)),
+          Text('Unit: $_selectedSatuan', style: const TextStyle(fontSize: 12)),
+          Text('Amount: ${_jumlahController.text}',
+              style: const TextStyle(fontSize: 12)),
+          Text('Cost: ${UniversalUnitService.formatRupiah(_calculateCost())}',
+              style: const TextStyle(fontSize: 12)),
+        ],
       ),
     );
   }
@@ -312,17 +393,12 @@ class MenuIngredientSelectorWidgetState
         const Text('Add Ingredient to Menu:',
             style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
-
         _buildIngredientDropdown(),
         const SizedBox(height: 12),
-
         _buildInputRow(usageUnits),
         const SizedBox(height: 12),
-
-        // FIXED: Show calculation details
         if (_selectedIngredient != null && _jumlahController.text.isNotEmpty)
           _buildCalculationPreview(),
-
         const SizedBox(height: 16),
         _buildAddButton(),
       ],
@@ -376,6 +452,7 @@ class MenuIngredientSelectorWidgetState
           );
         }).toList(),
         onChanged: (value) {
+          _debugPrint('Ingredient selected: $value');
           setState(() {
             _selectedIngredient = value;
             _jumlahController.clear();
@@ -420,7 +497,8 @@ class MenuIngredientSelectorWidgetState
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
               ),
               onChanged: (value) {
-                setState(() {}); // Update calculation preview
+                _debugPrint('Amount changed: $value');
+                setState(() {});
               },
             ),
           ),
@@ -447,6 +525,7 @@ class MenuIngredientSelectorWidgetState
                 );
               }).toList(),
               onChanged: (value) {
+                _debugPrint('Unit changed: $value');
                 setState(() {
                   _selectedSatuan = value ?? '%';
                   _jumlahController.clear();
@@ -459,9 +538,7 @@ class MenuIngredientSelectorWidgetState
     );
   }
 
-  // FIXED: Show calculation preview
   Widget _buildCalculationPreview() {
-    String details = _getCalculationDetails();
     double cost = _calculateCost();
 
     return Container(
@@ -480,23 +557,11 @@ class MenuIngredientSelectorWidgetState
               const SizedBox(width: 6),
               const Text(
                 'Calculation Preview',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          if (details.isNotEmpty)
-            Text(
-              details,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[700],
-              ),
-            ),
-          const SizedBox(height: 4),
           Text(
             'Cost: ${UniversalUnitService.formatRupiah(cost)}',
             style: TextStyle(
