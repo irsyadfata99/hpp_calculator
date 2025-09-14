@@ -1,4 +1,5 @@
-// File: lib/services/universal_unit_service.dart - Integrated with Constants & Validators
+// lib/services/universal_unit_service.dart - FIXED VERSION: WORKING UNIT CALCULATIONS
+
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import '../utils/formatters.dart';
@@ -35,6 +36,8 @@ class UniversalUnitService {
       'lembar', // Sheet
       'potong', // Cut/piece
       'porsi', // Portion
+      'kg', // Weight
+      'liter', // Volume
     ];
   }
 
@@ -87,7 +90,7 @@ class UniversalUnitService {
     );
   }
 
-  /// Calculate cost berdasarkan unit exact dengan validation
+  /// FIXED: Calculate cost berdasarkan unit exact dengan validation yang lebih fleksibel
   static CalculationResult calculateUnitCost({
     required double totalPrice,
     required double packageQuantity,
@@ -123,26 +126,33 @@ class UniversalUnitService {
       return CalculationResult.error('Jumlah melebihi batas maksimal');
     }
 
-    // Check logical constraints
-    if (unitsUsed > packageQuantity) {
+    // FIXED: Remove strict constraint yang menyebabkan bug
+    // Dalam memasak, seringkali kita beli 1kg tapi pakai 1.5kg dari beberapa pembelian
+    // Atau beli dalam satuan besar tapi pakai dalam satuan kecil (1 botol = 1000ml, pakai 50ml)
+    // Jadi tidak perlu constraint ketat unitsUsed <= packageQuantity
+
+    // FIXED: Add reasonable upper limit instead of strict equality
+    if (unitsUsed > packageQuantity * 50) {
+      // Allow up to 50x for unit conversion scenarios
       return CalculationResult.error(
-          'Jumlah yang dipakai tidak boleh lebih besar dari jumlah dalam package');
+          'Jumlah yang dipakai terlalu besar. Periksa satuan dan jumlah kembali.');
     }
 
     // Calculate unit price and total cost
     double pricePerUnit = totalPrice / packageQuantity;
     double totalCost = pricePerUnit * unitsUsed;
 
-    // Validate result
+    // Validate result is reasonable
     if (totalCost > AppConstants.maxPrice) {
       return CalculationResult.error('Hasil perhitungan terlalu besar');
     }
 
+    // FIXED: Better success message with more info
     return CalculationResult.success(
       cost: totalCost,
       calculation:
           '${AppFormatters.formatRupiah(pricePerUnit)} per unit × $unitsUsed unit = ${AppFormatters.formatRupiah(totalCost)}',
-      unitUsed: '$unitsUsed unit dari $packageQuantity unit',
+      unitUsed: '$unitsUsed unit (dari $packageQuantity unit dibeli)',
     );
   }
 
