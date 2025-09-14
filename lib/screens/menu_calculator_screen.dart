@@ -11,7 +11,7 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
-import '../main.dart'; // For DataSyncController
+import '../services/data_sync_controller.dart';
 
 class MenuCalculatorScreen extends StatefulWidget {
   final DataSyncController syncController;

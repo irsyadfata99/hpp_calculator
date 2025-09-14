@@ -1,4 +1,4 @@
-// lib/main.dart - CRITICAL FIX: ELIMINATED PROVIDER LOOPS
+// lib/main.dart - PHASE 1: CRITICAL IMPORT FIX
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -9,6 +9,8 @@ import 'screens/operational_calculator_screen.dart';
 import 'screens/menu_calculator_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/constants.dart';
+// FIXED: Correct import for DataSyncController
+import 'services/data_sync_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

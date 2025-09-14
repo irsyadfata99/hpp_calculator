@@ -1,4 +1,4 @@
-// lib/screens/hpp_calculator_screen.dart - FIXED FOR SYNC CONTROLLER
+// lib/screens/hpp_calculator_screen.dart - FIXED PROVIDER REFERENCES
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/hpp_provider.dart';
@@ -9,7 +9,7 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
-import '../main.dart'; // For DataSyncController
+import '../services/data_sync_controller.dart';
 
 class HPPCalculatorScreen extends StatefulWidget {
   final DataSyncController syncController;
@@ -151,7 +151,7 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
     );
   }
 
-  Widget _buildErrorMessage(BuildContext context, AppStateProvider appState) {
+  Widget _buildErrorMessage(BuildContext context, HPPProvider hppProvider) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppConstants.smallPadding),
@@ -167,13 +167,13 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
           const SizedBox(width: AppConstants.smallPadding),
           Expanded(
             child: Text(
-              appState.errorMessage!,
+              hppProvider.errorMessage!,
               style: const TextStyle(color: AppColors.error, fontSize: 14),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
-            onPressed: () => appState.clearError(),
+            onPressed: () => hppProvider.clearError(),
             color: AppColors.error,
           ),
         ],
@@ -181,7 +181,7 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
     );
   }
 
-  Widget _buildDataSummaryCard(AppStateProvider appState) {
+  Widget _buildDataSummaryCard(HPPProvider hppProvider) {
     return Card(
       elevation: AppConstants.cardElevation,
       child: Padding(
@@ -204,16 +204,18 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
               children: [
                 _buildSummaryItem(
                     'Bahan',
-                    appState.sharedData.variableCosts.length.toString(),
+                    hppProvider.data.variableCosts.length.toString(),
                     AppColors.success),
                 _buildSummaryItem(
                     'Fixed Cost',
-                    appState.sharedData.fixedCosts.length.toString(),
+                    hppProvider.data.fixedCosts.length.toString(),
                     AppColors.secondary),
                 _buildSummaryItem(
                     'Status',
-                    appState.hppResult?.isValid == true ? 'Valid' : 'Invalid',
-                    appState.hppResult?.isValid == true
+                    hppProvider.lastCalculationResult?.isValid == true
+                        ? 'Valid'
+                        : 'Invalid',
+                    hppProvider.lastCalculationResult?.isValid == true
                         ? AppColors.success
                         : AppColors.error),
               ],

@@ -28,7 +28,7 @@ class AppStateProvider with ChangeNotifier {
   // State management
   bool _isLoading = false;
   String? _errorMessage;
-  DateTime? _lastUpdateTime;
+  // DateTime? _lastUpdateTime;
 
   // SIMPLIFIED: Single getter for all data
   SharedCalculationData get sharedData => _sharedData;
