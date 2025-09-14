@@ -1,4 +1,4 @@
-// lib/providers/hpp_provider.dart - COMPLETE IMPLEMENTATION (No Export/Import)
+// lib/providers/hpp_provider.dart - FIXED ANTI-LOOP VERSION
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/shared_calculation_data.dart';
@@ -14,6 +14,10 @@ class HPPProvider with ChangeNotifier {
 
   // Auto-save timer
   Timer? _autoSaveTimer;
+
+  // FIXED: Anti-loop mechanism
+  bool _isCalculating = false;
+  DateTime? _lastCalculationTime;
 
   // Getters
   SharedCalculationData get data => _data;
@@ -66,7 +70,6 @@ class HPPProvider with ChangeNotifier {
 
   Future<void> addVariableCost(
       String nama, double totalHarga, double jumlah, String satuan) async {
-    // Validate input
     final namaValidation = InputValidator.validateName(nama);
     if (namaValidation != null) {
       _setError('Nama: $namaValidation');
@@ -88,6 +91,14 @@ class HPPProvider with ChangeNotifier {
     _setLoading(true);
     try {
       final newCosts = List<Map<String, dynamic>>.from(_data.variableCosts);
+
+      // FIXED: Single debug print for ingredient addition
+      debugPrint('✅ Adding ingredient: $nama');
+      debugPrint(
+          '   Purchase: $jumlah $satuan @ Rp ${totalHarga.toInt()} total');
+      debugPrint(
+          '   Unit price: Rp ${(totalHarga / jumlah).toInt()} per $satuan');
+
       newCosts.add({
         'nama': nama.trim(),
         'totalHarga': totalHarga,
@@ -136,7 +147,6 @@ class HPPProvider with ChangeNotifier {
   }
 
   Future<void> addFixedCost(String jenis, double nominal) async {
-    // Validate input
     final jenisValidation = InputValidator.validateName(jenis);
     if (jenisValidation != null) {
       _setError('Jenis: $jenisValidation');
@@ -184,7 +194,6 @@ class HPPProvider with ChangeNotifier {
   // ===============================================
 
   Future<void> updateEstimasi(double porsi, double produksiBulanan) async {
-    // Validate input
     final porsiValidation = InputValidator.validateQuantity(porsi.toString());
     if (porsiValidation != null) {
       _setError('Estimasi Porsi: $porsiValidation');
@@ -204,6 +213,12 @@ class HPPProvider with ChangeNotifier {
         estimasiPorsi: porsi,
         estimasiProduksiBulanan: produksiBulanan,
       );
+
+      // FIXED: Single debug print for estimation update
+      debugPrint('📊 Updated estimations:');
+      debugPrint('  estimasiPorsiPerProduksi: ${porsi.toInt()} (int)');
+      debugPrint('  estimasiProduksiBulanan: ${produksiBulanan.toInt()} (int)');
+
       await _recalculateHPP();
       _setError(null);
       _scheduleAutoSave();
@@ -215,11 +230,33 @@ class HPPProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // CORE CALCULATION METHOD
+  // CORE CALCULATION METHOD - FIXED WITH ANTI-LOOP
   // ===============================================
 
   Future<void> _recalculateHPP() async {
+    // FIXED: Prevent multiple simultaneous calculations
+    if (_isCalculating) {
+      debugPrint('🚫 HPP Calculation already in progress, skipping...');
+      return;
+    }
+
+    // FIXED: Add cooldown period
+    if (_lastCalculationTime != null) {
+      final timeSinceLastCalc =
+          DateTime.now().difference(_lastCalculationTime!);
+      if (timeSinceLastCalc.inMilliseconds < 300) {
+        // 300ms cooldown
+        debugPrint('🚫 HPP Calculation cooldown active, skipping...');
+        return;
+      }
+    }
+
     try {
+      _isCalculating = true;
+      _lastCalculationTime = DateTime.now();
+
+      debugPrint('🧮 HPP Calculation - START (${_lastCalculationTime})');
+
       final result = HPPCalculatorService.calculateHPP(
         variableCosts: _data.variableCosts,
         fixedCosts: _data.fixedCosts,
@@ -235,14 +272,18 @@ class HPPProvider with ChangeNotifier {
           biayaVariablePerPorsi: result.biayaVariablePerPorsi,
           biayaFixedPerPorsi: result.biayaFixedPerPorsi,
         );
+
+        debugPrint('✅ HPP Calculation - COMPLETED');
+        debugPrint(
+            '  HPP Murni per Porsi: Rp ${result.hppMurniPerPorsi.toInt()}');
       } else {
         debugPrint('❌ HPP Calculation failed: ${result.errorMessage}');
-        // Don't throw, just keep invalid result for display
       }
     } catch (e) {
       _lastCalculationResult = null;
       debugPrint('❌ HPP Calculation error: $e');
-      // Don't rethrow to avoid breaking the UI
+    } finally {
+      _isCalculating = false;
     }
   }
 
@@ -263,7 +304,6 @@ class HPPProvider with ChangeNotifier {
       debugPrint('💾 HPP Auto-save completed: ${_data.totalItemCount} items');
     } catch (e) {
       debugPrint('❌ HPP Auto-save failed: $e');
-      // Don't set error for auto-save failures to avoid UI disruption
     }
   }
 
@@ -291,7 +331,12 @@ class HPPProvider with ChangeNotifier {
     _lastCalculationResult = null;
     _errorMessage = null;
     _isLoading = false;
-    _scheduleAutoSave(); // Save the reset state
+
+    // FIXED: Reset anti-loop flags
+    _isCalculating = false;
+    _lastCalculationTime = null;
+
+    _scheduleAutoSave();
     notifyListeners();
   }
 
@@ -299,7 +344,6 @@ class HPPProvider with ChangeNotifier {
   // ADDITIONAL UTILITY METHODS
   // ===============================================
 
-  // Get formatted totals
   String get formattedTotalVariableCosts {
     return _data.formatRupiah(_data.totalVariableCosts);
   }
@@ -312,14 +356,12 @@ class HPPProvider with ChangeNotifier {
     return _data.formatRupiah(_data.hppMurniPerPorsi);
   }
 
-  // Check if calculation is ready
   bool get isCalculationReady {
     return _data.variableCosts.isNotEmpty &&
         _data.estimasiPorsi > 0 &&
         _data.estimasiProduksiBulanan > 0;
   }
 
-  // Get calculation summary
   Map<String, dynamic> get calculationSummary {
     return {
       'totalVariableItems': _data.variableCosts.length,

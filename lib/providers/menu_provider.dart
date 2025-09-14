@@ -1,4 +1,4 @@
-// lib/providers/menu_provider.dart - FIXED VERSION: PUBLIC ERROR HANDLING
+// lib/providers/menu_provider.dart - FIXED ANTI-LOOP VERSION
 
 import 'package:flutter/foundation.dart';
 import 'dart:async';
@@ -24,6 +24,15 @@ class MenuProvider with ChangeNotifier {
 
   // Reference to shared data (will be injected)
   SharedCalculationData? _sharedData;
+
+  // FIXED: Anti-loop mechanism
+  bool _isUpdatingSharedData = false;
+  bool _isCalculating = false;
+  DateTime? _lastUpdateTime;
+  String? _lastDataHash; // To track actual data changes
+
+  // FIXED: Static variable for tracking last ingredient count (moved outside method)
+  static int _lastIngredientCount = -1;
 
   // Getters - FIXED: Use proper prefixed types
   String get namaMenu => _namaMenu;
@@ -71,6 +80,20 @@ class MenuProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// FIXED: Safe notify listeners method to prevent notifications during disposal
+  void _safeNotifyListeners() {
+    try {
+      if (!mounted) return; // Check if provider is still mounted
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ Failed to notify listeners: $e');
+    }
+  }
+
+  /// Check if the provider is still mounted (not disposed)
+  bool get mounted => !_isDisposed;
+  bool _isDisposed = false;
+
   // ===============================================
   // INITIALIZATION WITH STORAGE
   // ===============================================
@@ -99,12 +122,73 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // SHARED DATA INTEGRATION - FIXED NULL SAFETY
+  // SHARED DATA INTEGRATION - FIXED WITH ANTI-LOOP MECHANISM
   // ===============================================
 
   void updateSharedData(SharedCalculationData newSharedData) {
-    _sharedData = newSharedData;
-    _recalculateMenu();
+    // FIXED: Prevent recursive updates
+    if (_isUpdatingSharedData) {
+      debugPrint(
+          '🚫 MenuProvider.updateSharedData: Already updating, skipping...');
+      return;
+    }
+
+    // FIXED: Add cooldown period
+    if (_lastUpdateTime != null) {
+      final timeSinceLastUpdate = DateTime.now().difference(_lastUpdateTime!);
+      if (timeSinceLastUpdate.inMilliseconds < 500) {
+        // 500ms cooldown
+        debugPrint(
+            '🚫 MenuProvider.updateSharedData: Cooldown active, skipping...');
+        return;
+      }
+    }
+
+    // FIXED: Check if data actually changed using hash
+    final newDataHash = _generateDataHash(newSharedData);
+    if (_lastDataHash == newDataHash) {
+      debugPrint(
+          '🚫 MenuProvider.updateSharedData: No actual data changes, skipping...');
+      return;
+    }
+
+    try {
+      _isUpdatingSharedData = true;
+      _lastUpdateTime = DateTime.now();
+      _lastDataHash = newDataHash;
+
+      debugPrint(
+          '🔄 MenuProvider.updateSharedData called (${_lastUpdateTime})');
+      debugPrint('📊 Data hash: ${newDataHash.substring(0, 8)}...');
+
+      _sharedData = newSharedData;
+
+      // FIXED: Only recalculate if we have meaningful menu data
+      if (_shouldRecalculate()) {
+        _recalculateMenu();
+      } else {
+        debugPrint(
+            'ℹ️ MenuProvider: Skipping recalculation - insufficient menu data');
+      }
+    } catch (e) {
+      debugPrint('❌ MenuProvider: Error updating shared data: $e');
+      _setError('Error updating shared data: ${e.toString()}');
+    } finally {
+      _isUpdatingSharedData = false;
+    }
+  }
+
+  // FIXED: Generate hash for data change detection
+  String _generateDataHash(SharedCalculationData data) {
+    return '${data.estimasiPorsi}_${data.estimasiProduksiBulanan}_${data.hppMurniPerPorsi}_${data.variableCosts.length}_${_komposisiMenu.length}_${_namaMenu}';
+  }
+
+  // FIXED: Determine if recalculation is needed
+  bool _shouldRecalculate() {
+    return _sharedData != null &&
+        _komposisiMenu.isNotEmpty &&
+        _namaMenu.trim().isNotEmpty &&
+        !_isCalculating;
   }
 
   // FIXED: Enhanced availableIngredients with comprehensive null safety and validation
@@ -136,7 +220,12 @@ class MenuProvider with ChangeNotifier {
         return isValid;
       }).toList();
 
-      debugPrint('✅ Available ingredients: ${validIngredients.length}');
+      // FIXED: Only show count if it changed (using class-level static variable)
+      if (validIngredients.length != _lastIngredientCount) {
+        debugPrint('📋 Available ingredients: ${validIngredients.length}');
+        _lastIngredientCount = validIngredients.length;
+      }
+
       return validIngredients;
     } catch (e) {
       debugPrint('❌ Error getting available ingredients: $e');
@@ -248,7 +337,6 @@ class MenuProvider with ChangeNotifier {
       return;
     }
 
-    // Validate inputs
     final namaValidation = InputValidator.validateName(namaIngredient);
     if (namaValidation != null) {
       _setError('Nama ingredient: $namaValidation');
@@ -413,19 +501,46 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // CORE CALCULATION METHOD - FIXED TYPES
+  // CORE CALCULATION METHOD - FIXED WITH ANTI-LOOP
   // ===============================================
 
+  DateTime? _lastCalculationTime;
+
   Future<void> _recalculateMenu() async {
-    if (_sharedData == null ||
-        _komposisiMenu.isEmpty ||
-        _namaMenu.trim().isEmpty) {
-      _lastCalculationResult = null;
-      notifyListeners();
+    // FIXED: More comprehensive prevention of simultaneous calculations
+    if (_isCalculating || _isUpdatingSharedData) {
+      debugPrint('🚫 Menu calculation blocked - operation in progress');
       return;
     }
 
+    if (_sharedData == null ||
+        _komposisiMenu.isEmpty ||
+        _namaMenu.trim().isEmpty) {
+      if (_lastCalculationResult != null) {
+        _lastCalculationResult = null;
+        _safeNotifyListeners();
+      }
+      return;
+    }
+
+    // FIXED: Add calculation rate limiting
+    if (_lastCalculationTime != null) {
+      final timeSinceLastCalc =
+          DateTime.now().difference(_lastCalculationTime!);
+      if (timeSinceLastCalc.inMilliseconds < 200) {
+        // 200ms minimum between calculations
+        debugPrint(
+            '🚫 Menu calculation rate limited (${timeSinceLastCalc.inMilliseconds}ms)');
+        return;
+      }
+    }
+
     try {
+      _isCalculating = true;
+      _lastCalculationTime = DateTime.now();
+
+      debugPrint('🧮 Menu Calculation - START (${_lastCalculationTime})');
+
       final menuItem = MenuModel.MenuItem(
         id: 'temp',
         namaMenu: _namaMenu,
@@ -439,11 +554,36 @@ class MenuProvider with ChangeNotifier {
         marginPercentage: _marginPercentage,
       );
 
-      _lastCalculationResult = result;
-      notifyListeners();
+      // Only update if result is different
+      if (_lastCalculationResult?.isValid != result.isValid ||
+          (_lastCalculationResult?.hargaSetelahMargin !=
+              result.hargaSetelahMargin)) {
+        _lastCalculationResult = result;
+
+        if (result.isValid) {
+          debugPrint('✅ Menu Calculation - COMPLETED');
+          debugPrint('  Menu: $_namaMenu');
+          debugPrint(
+              '  Bahan baku cost: Rp ${result.biayaBahanBakuMenu.toInt()}');
+          debugPrint('  HPP murni: Rp ${result.hppMurniPerMenu.toInt()}');
+          debugPrint(
+              '  Selling price: Rp ${result.hargaSetelahMargin.toInt()}');
+        } else {
+          debugPrint('❌ Menu Calculation failed: ${result.errorMessage}');
+        }
+
+        _safeNotifyListeners();
+      } else {
+        debugPrint('ℹ️ Menu calculation result unchanged - skipping notify');
+      }
     } catch (e) {
-      _lastCalculationResult = null;
+      if (_lastCalculationResult != null) {
+        _lastCalculationResult = null;
+        _safeNotifyListeners();
+      }
       debugPrint('❌ Menu Calculation error: $e');
+    } finally {
+      _isCalculating = false;
     }
   }
 
@@ -511,7 +651,12 @@ class MenuProvider with ChangeNotifier {
     _marginPercentage = AppConstants.defaultMargin;
     _lastCalculationResult = null;
     _errorMessage = null;
-    notifyListeners();
+
+    // FIXED: Reset simplified flags
+    _isCalculating = false;
+    _lastCalculationTime = null;
+
+    _safeNotifyListeners();
   }
 
   void resetAllData() {
@@ -521,7 +666,12 @@ class MenuProvider with ChangeNotifier {
     _marginPercentage = AppConstants.defaultMargin;
     _lastCalculationResult = null;
     _errorMessage = null;
-    notifyListeners();
+
+    // FIXED: Reset simplified flags
+    _isCalculating = false;
+    _lastCalculationTime = null;
+
+    _safeNotifyListeners();
   }
 
   // ===============================================
@@ -581,6 +731,7 @@ class MenuProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _autoSaveTimer?.cancel();
     super.dispose();
   }

@@ -1,4 +1,4 @@
-// lib/main.dart - FIXED VERSION: Eliminates infinite loops and layout issues
+// lib/main.dart - FIXED: COMPLETELY ELIMINATES ALL LOOPS
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -13,10 +13,9 @@ import 'utils/constants.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // FIXED: Simplified error handling - remove complex global handlers that might interfere
+  // FIXED: Simplified error handling
   FlutterError.onError = (FlutterErrorDetails details) {
     debugPrint('🚨 Flutter Error: ${details.exception}');
-    // Let Flutter handle the error normally instead of custom handling
   };
 
   runApp(const MyApp());
@@ -29,7 +28,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // FIXED: Create providers without immediate cross-communication
         ChangeNotifierProvider(create: (_) => HPPProvider()),
         ChangeNotifierProvider(create: (_) => OperationalProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
@@ -39,7 +37,6 @@ class MyApp extends StatelessWidget {
         theme: AppTheme.lightTheme,
         home: const MainNavigationScreen(),
         debugShowCheckedModeBanner: false,
-        // FIXED: Simplified error widget - remove complex error handling
         builder: (context, widget) {
           return widget ?? const SizedBox.shrink();
         },
@@ -60,9 +57,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
   bool _isInitialized = false;
   String? _initError;
 
-  // FIXED: Add flag to prevent infinite communication loops
-  bool _isUpdatingProviders = false;
-
   @override
   void initState() {
     super.initState();
@@ -73,19 +67,16 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     try {
       debugPrint('🚀 Initializing ${AppConstants.appName}...');
 
-      // FIXED: Wait for first frame to ensure context is ready
       await Future.delayed(const Duration(milliseconds: 100));
-
       if (!mounted) return;
 
       try {
-        // Get providers safely with null checks
         final hppProvider = Provider.of<HPPProvider>(context, listen: false);
         final operationalProvider =
             Provider.of<OperationalProvider>(context, listen: false);
         final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-        // FIXED: Initialize providers sequentially to avoid race conditions
+        // FIXED: Initialize providers INDEPENDENTLY - NO CROSS-COMMUNICATION
         debugPrint('📊 Initializing HPP Provider...');
         await hppProvider.initializeFromStorage();
 
@@ -95,11 +86,8 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         debugPrint('🍽️ Initializing Menu Provider...');
         await menuProvider.initializeFromStorage();
 
-        // FIXED: Setup provider communication AFTER all providers are initialized
-        _setupProviderCommunicationSafe(
-            hppProvider, operationalProvider, menuProvider);
-
-        debugPrint('✅ All providers initialized successfully');
+        // FIXED: NO AUTOMATIC SYNCING AT ALL
+        debugPrint('✅ All providers initialized INDEPENDENTLY');
 
         if (mounted) {
           setState(() {
@@ -131,55 +119,8 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  /// FIXED: Safe provider communication that prevents infinite loops
-  void _setupProviderCommunicationSafe(
-    HPPProvider hppProvider,
-    OperationalProvider operationalProvider,
-    MenuProvider menuProvider,
-  ) {
-    debugPrint('🔗 Setting up safe provider communication...');
-
-    // FIXED: Remove listener-based communication that causes infinite loops
-    // Instead, use manual updates when needed
-
-    // Initial sync if HPP has data
-    if (hppProvider.data.estimasiPorsi > 0) {
-      _syncProvidersData(hppProvider, operationalProvider, menuProvider);
-    }
-
-    debugPrint('✅ Safe provider communication setup complete');
-  }
-
-  /// FIXED: Manual sync method to prevent infinite loops
-  void _syncProvidersData(
-    HPPProvider hppProvider,
-    OperationalProvider operationalProvider,
-    MenuProvider menuProvider,
-  ) {
-    if (_isUpdatingProviders) return; // Prevent recursive calls
-
-    try {
-      _isUpdatingProviders = true;
-
-      debugPrint('🔄 Syncing provider data...');
-
-      // Update with current HPP data
-      if (hppProvider.data.estimasiPorsi > 0) {
-        operationalProvider.updateSharedData(hppProvider.data);
-        menuProvider.updateSharedData(hppProvider.data);
-      }
-
-      debugPrint('✅ Provider data sync complete');
-    } catch (e) {
-      debugPrint('❌ Error syncing provider data: $e');
-    } finally {
-      _isUpdatingProviders = false;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // FIXED: Simplified loading state - remove complex UI during loading
     if (!_isInitialized) {
       return const Scaffold(
         body: Center(
@@ -195,7 +136,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // FIXED: Simplified error state
     if (_initError != null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Error')),
@@ -230,7 +170,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // FIXED: Main interface with proper provider usage
+    // FIXED: COMPLETELY REMOVED ALL AUTOMATIC SYNCING
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -244,14 +184,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
         builder:
             (context, hppProvider, operationalProvider, menuProvider, child) {
-          // FIXED: Trigger manual sync when switching tabs
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && !_isUpdatingProviders) {
-              _syncProvidersData(
-                  hppProvider, operationalProvider, menuProvider);
-            }
-          });
-
+          // FIXED: NO SYNCING HERE - ONLY UI BUILDING
           return _buildBottomNavigationBar(
               hppProvider, operationalProvider, menuProvider);
         },
@@ -270,9 +203,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         setState(() {
           _currentIndex = index;
         });
-
-        // FIXED: Manual sync on tab change
-        _syncProvidersData(hppProvider, operationalProvider, menuProvider);
+        // FIXED: NO SYNCING ON TAB CHANGES
       },
       type: BottomNavigationBarType.fixed,
       elevation: 8,
@@ -297,7 +228,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // FIXED: Simplified badge widget to prevent layout issues
   Widget _buildTabIcon(IconData icon, int count) {
     if (count <= 0) {
       return Icon(icon);
