@@ -1,4 +1,4 @@
-// lib/screens/menu_calculator_screen.dart - FIXED VERSION
+// lib/screens/menu_calculator_screen.dart - CLEANED VERSION: NO EXPORT/IMPORT
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/menu_provider.dart';
@@ -9,7 +9,6 @@ import '../widgets/menu/menu_composition_list_widget.dart';
 import '../widgets/menu/menu_calculation_result_widget.dart';
 import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
-import '../widgets/common/error_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
 
@@ -221,23 +220,6 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             ),
             PopupMenuDivider(),
             PopupMenuItem(
-              value: 'export',
-              child: ListTile(
-                leading: Icon(Icons.download),
-                title: Text('Export Data'),
-                dense: true,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'import',
-              child: ListTile(
-                leading: Icon(Icons.upload),
-                title: Text('Import Data'),
-                dense: true,
-              ),
-            ),
-            PopupMenuDivider(),
-            PopupMenuItem(
               value: 'reset_current',
               child: ListTile(
                 leading: Icon(Icons.refresh),
@@ -291,8 +273,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
 
   Widget _buildMenuSummaryCard(MenuProvider provider) {
     return Card(
-      elevation: AppConstants
-          .cardElevation, // FIXED: menggunakan AppConstants.cardElevation
+      elevation: AppConstants.cardElevation,
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
         child: Column(
@@ -540,12 +521,6 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
       case 'history':
         _showMenuHistory(menuProvider);
         break;
-      case 'export':
-        await _handleExport(context, menuProvider);
-        break;
-      case 'import':
-        await _handleImport(context, menuProvider);
-        break;
       case 'reset_current':
         await _handleResetCurrent(context, menuProvider);
         break;
@@ -623,7 +598,6 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
 
   void _showMenuAnalysis(MenuProvider provider) {
     final analysis = provider.getMenuAnalysis();
-    // FIXED: Removed unused 'detailedAnalysis' variable
 
     showDialog(
       context: context,
@@ -678,64 +652,6 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
         );
       }
     }
-  }
-
-  Future<void> _handleExport(
-      BuildContext context, MenuProvider provider) async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2)),
-              SizedBox(width: 16),
-              Text('📤 Preparing export...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      final result = await provider.exportMenuHistory();
-
-      if (result != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Menu data exported successfully!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      } else if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Export failed'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ErrorDialog.show(
-          context,
-          title: 'Export Error',
-          message: e.toString(),
-          onRetry: () => _handleExport(context, provider),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleImport(
-      BuildContext context, MenuProvider provider) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Import functionality coming soon'),
-        backgroundColor: AppColors.info,
-      ),
-    );
   }
 
   Future<void> _handleResetCurrent(

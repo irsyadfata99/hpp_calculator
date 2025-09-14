@@ -1,4 +1,4 @@
-// lib/services/storage_service.dart - Integrated with Constants & Validators
+// lib/services/storage_service.dart - CLEANED VERSION: NO EXPORT/IMPORT
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,7 +12,6 @@ class StorageService {
   // Using constants from AppConstants instead of local constants
   static const String _keySharedData = AppConstants.keySharedData;
   static const String _keyMenuHistory = AppConstants.keyMenuHistory;
-  static const String _keyBackupData = 'backup_data';
 
   // Maximum history items using validation approach
   static const int _maxHistoryItems = 20;
@@ -80,7 +79,7 @@ class StorageService {
       if (jsonData['karyawan'] != null) {
         try {
           karyawan = (jsonData['karyawan'] as List)
-              .map((item) => KaryawanData.fromMap(item))
+              .map((item) => KaryawanData.fromMap(item as Map<String, dynamic>))
               .toList();
         } catch (e) {
           developer.log('Error parsing karyawan data: $e',
@@ -191,79 +190,6 @@ class StorageService {
     }
   }
 
-  // Export data for backup with validation
-  static Future<String?> exportData() async {
-    try {
-      final sharedData = await loadSharedData();
-      final menuHistory = await loadMenuHistory();
-
-      final exportData = {
-        'version': AppConstants.appVersion,
-        'appName': AppConstants.appName,
-        'exportDate': DateTime.now().toIso8601String(),
-        'sharedData': sharedData?.toMap(),
-        'menuHistory': menuHistory.map((m) => m.toMap()).toList(),
-        'metadata': {
-          'totalItems': (sharedData?.totalItemCount ?? 0) + menuHistory.length,
-          'hasKaryawan': (sharedData?.karyawan.isNotEmpty ?? false),
-          'hasMenuHistory': menuHistory.isNotEmpty,
-        }
-      };
-
-      return json.encode(exportData);
-    } catch (e) {
-      developer.log('Error exporting data: $e', name: 'StorageService');
-      return null;
-    }
-  }
-
-  // Import data from backup with comprehensive validation
-  static Future<bool> importData(String jsonData) async {
-    try {
-      final Map<String, dynamic> importData = json.decode(jsonData);
-
-      // Validate import data structure using comprehensive checks
-      if (!_validateImportDataStructure(importData)) {
-        developer.log('Invalid backup file format', name: 'StorageService');
-        return false;
-      }
-
-      // Check version compatibility
-      final importVersion = importData['version'] as String?;
-      if (importVersion != null && !_isVersionCompatible(importVersion)) {
-        developer.log('Incompatible backup version: $importVersion',
-            name: 'StorageService');
-        return false;
-      }
-
-      // Import shared data with validation
-      if (importData['sharedData'] != null) {
-        final success = await _importSharedData(importData['sharedData']);
-        if (!success) {
-          developer.log('Failed to import shared data', name: 'StorageService');
-          return false;
-        }
-      }
-
-      // Import menu history with validation
-      if (importData['menuHistory'] != null) {
-        final success = await _importMenuHistory(importData['menuHistory']);
-        if (!success) {
-          developer.log('Failed to import menu history',
-              name: 'StorageService');
-          return false;
-        }
-      }
-
-      developer.log('Data import completed successfully',
-          name: 'StorageService');
-      return true;
-    } catch (e) {
-      developer.log('Error importing data: $e', name: 'StorageService');
-      return false;
-    }
-  }
-
   // Auto-save with debounce functionality
   static Future<void> autoSave(SharedCalculationData data) async {
     final now = DateTime.now();
@@ -291,8 +217,8 @@ class StorageService {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Remove all app-related keys
-      final keys = [_keySharedData, _keyMenuHistory, _keyBackupData];
+      // Remove all app-related keys (removed backup key)
+      final keys = [_keySharedData, _keyMenuHistory];
 
       bool success = true;
       for (String key in keys) {
@@ -330,10 +256,8 @@ class StorageService {
     try {
       final sharedData = await loadSharedData();
       final menuHistory = await loadMenuHistory();
-      final exportString = await exportData();
 
       return {
-        'totalSize': exportString?.length ?? 0,
         'sharedDataItems': sharedData?.totalItemCount ?? 0,
         'menuHistoryItems': menuHistory.length,
         'hasData': sharedData != null,
@@ -343,7 +267,6 @@ class StorageService {
     } catch (e) {
       developer.log('Error getting data info: $e', name: 'StorageService');
       return {
-        'totalSize': 0,
         'sharedDataItems': 0,
         'menuHistoryItems': 0,
         'hasData': false,
@@ -452,98 +375,6 @@ class StorageService {
     }
 
     return true;
-  }
-
-  // Validate import data structure
-  static bool _validateImportDataStructure(Map<String, dynamic> importData) {
-    if (!importData.containsKey('version')) {
-      developer.log('Import data missing version', name: 'StorageService');
-      return false;
-    }
-
-    if (!importData.containsKey('sharedData') &&
-        !importData.containsKey('menuHistory')) {
-      developer.log('Import data contains no useful data',
-          name: 'StorageService');
-      return false;
-    }
-
-    return true;
-  }
-
-  // Check version compatibility
-  static bool _isVersionCompatible(String importVersion) {
-    // Simple version check - in production you might want more sophisticated version comparison
-    final currentVersion = AppConstants.appVersion;
-    return importVersion == currentVersion || importVersion.startsWith('1.');
-  }
-
-  // Import shared data helper
-  static Future<bool> _importSharedData(
-      Map<String, dynamic> sharedDataMap) async {
-    try {
-      List<KaryawanData> karyawan = [];
-      if (sharedDataMap['karyawan'] != null) {
-        karyawan = (sharedDataMap['karyawan'] as List)
-            .map((item) => KaryawanData.fromMap(item))
-            .toList();
-      }
-
-      final sharedData = SharedCalculationData(
-        variableCosts: List<Map<String, dynamic>>.from(
-            sharedDataMap['variableCosts'] ?? []),
-        fixedCosts:
-            List<Map<String, dynamic>>.from(sharedDataMap['fixedCosts'] ?? []),
-        estimasiPorsi: _validateAndClampDouble(
-          sharedDataMap['estimasiPorsi'],
-          AppConstants.defaultEstimasiPorsi,
-          AppConstants.minQuantity,
-          AppConstants.maxQuantity,
-        ),
-        estimasiProduksiBulanan: _validateAndClampDouble(
-          sharedDataMap['estimasiProduksiBulanan'],
-          AppConstants.defaultEstimasiProduksi,
-          AppConstants.minQuantity,
-          AppConstants.maxQuantity,
-        ),
-        karyawan: karyawan,
-      );
-
-      return await saveSharedData(sharedData);
-    } catch (e) {
-      developer.log('Error importing shared data: $e', name: 'StorageService');
-      return false;
-    }
-  }
-
-  // Import menu history helper
-  static Future<bool> _importMenuHistory(List<dynamic> menuHistoryData) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      List<String> history = [];
-
-      for (var item in menuHistoryData) {
-        try {
-          final menuItem = MenuItem.fromMap(item as Map<String, dynamic>);
-          if (_validateMenuItem(menuItem)) {
-            history.add(json.encode(menuItem.toMap()));
-          }
-        } catch (e) {
-          developer.log('Skipping invalid menu item during import: $e',
-              name: 'StorageService');
-        }
-      }
-
-      // Limit imported history
-      if (history.length > _maxHistoryItems) {
-        history = history.take(_maxHistoryItems).toList();
-      }
-
-      return await prefs.setStringList(_keyMenuHistory, history);
-    } catch (e) {
-      developer.log('Error importing menu history: $e', name: 'StorageService');
-      return false;
-    }
   }
 
   // Validate and clamp double values using constants

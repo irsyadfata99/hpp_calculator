@@ -1,4 +1,4 @@
-// lib/providers/menu_provider.dart - COMPLETE IMPLEMENTATION
+// lib/providers/menu_provider.dart - CLEANED VERSION: NO EXPORT/IMPORT
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/menu_model.dart';
@@ -429,41 +429,6 @@ class MenuProvider with ChangeNotifier {
     }
 
     return null; // Valid
-  }
-
-  // ===============================================
-  // EXPORT/IMPORT FUNCTIONALITY
-  // ===============================================
-
-  Future<String?> exportMenuHistory() async {
-    try {
-      _setLoading(true);
-      return await StorageService.exportData();
-    } catch (e) {
-      _setError('Export failed: ${e.toString()}');
-      return null;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<bool> importMenuData(String jsonData) async {
-    try {
-      _setLoading(true);
-      final success = await StorageService.importData(jsonData);
-      if (success) {
-        await initializeFromStorage();
-        debugPrint('✅ Menu Data imported successfully');
-      } else {
-        _setError('Import failed: Invalid data format');
-      }
-      return success;
-    } catch (e) {
-      _setError('Import failed: ${e.toString()}');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
   }
 
   // ===============================================
