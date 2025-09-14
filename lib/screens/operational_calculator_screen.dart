@@ -1,4 +1,4 @@
-// lib/screens/operational_calculator_screen.dart - WITHOUT EXPORT/IMPORT
+// lib/screens/operational_calculator_screen.dart - FIXED FOR SYNC CONTROLLER
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/operational_provider.dart';
@@ -10,9 +10,15 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
+import '../main.dart'; // For DataSyncController
 
 class OperationalCalculatorScreen extends StatefulWidget {
-  const OperationalCalculatorScreen({super.key});
+  final DataSyncController syncController;
+
+  const OperationalCalculatorScreen({
+    super.key,
+    required this.syncController,
+  });
 
   @override
   OperationalCalculatorScreenState createState() =>
@@ -22,44 +28,11 @@ class OperationalCalculatorScreen extends StatefulWidget {
 class OperationalCalculatorScreenState
     extends State<OperationalCalculatorScreen> {
   @override
-  void initState() {
-    super.initState();
-    // Setup provider-to-provider communication
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupProviderCommunication();
-    });
-  }
-
-  void _setupProviderCommunication() {
-    final hppProvider = Provider.of<HPPProvider>(context, listen: false);
-    final operationalProvider =
-        Provider.of<OperationalProvider>(context, listen: false);
-
-    debugPrint('🔗 Setting up operational provider communication...');
-    debugPrint(
-        '📊 HPP Data: ${hppProvider.data.estimasiPorsi} porsi, ${hppProvider.data.hppMurniPerPorsi} HPP');
-
-    // Update operational provider with current HPP data
-    operationalProvider.updateSharedData(hppProvider.data);
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _buildAppBar(),
       body: Consumer2<OperationalProvider, HPPProvider>(
         builder: (context, operationalProvider, hppProvider, child) {
-          // Ensure data synchronization
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (operationalProvider.sharedData == null ||
-                operationalProvider.sharedData!.estimasiPorsi !=
-                    hppProvider.data.estimasiPorsi ||
-                operationalProvider.sharedData!.hppMurniPerPorsi !=
-                    hppProvider.data.hppMurniPerPorsi) {
-              operationalProvider.updateSharedData(hppProvider.data);
-            }
-          });
-
           if (operationalProvider.isLoading) {
             return const LoadingWidget(
                 message: 'Menghitung biaya operational...');

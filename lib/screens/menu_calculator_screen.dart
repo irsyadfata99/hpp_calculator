@@ -1,5 +1,4 @@
-// lib/screens/menu_calculator_screen.dart - FIXED VERSION
-
+// lib/screens/menu_calculator_screen.dart - FIXED FOR SYNC CONTROLLER
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/menu_provider.dart';
@@ -12,9 +11,15 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
+import '../main.dart'; // For DataSyncController
 
 class MenuCalculatorScreen extends StatefulWidget {
-  const MenuCalculatorScreen({super.key});
+  final DataSyncController syncController;
+
+  const MenuCalculatorScreen({
+    super.key,
+    required this.syncController,
+  });
 
   @override
   MenuCalculatorScreenState createState() => MenuCalculatorScreenState();
@@ -306,7 +311,6 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                // This would need proper navigation context
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(

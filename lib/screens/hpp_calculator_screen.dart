@@ -1,4 +1,4 @@
-// lib/screens/hpp_calculator_screen.dart - WITHOUT EXPORT/IMPORT
+// lib/screens/hpp_calculator_screen.dart - FIXED FOR SYNC CONTROLLER
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/hpp_provider.dart';
@@ -9,10 +9,21 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
+import '../main.dart'; // For DataSyncController
 
-class HPPCalculatorScreen extends StatelessWidget {
-  const HPPCalculatorScreen({super.key});
+class HPPCalculatorScreen extends StatefulWidget {
+  final DataSyncController syncController;
 
+  const HPPCalculatorScreen({
+    super.key,
+    required this.syncController,
+  });
+
+  @override
+  HPPCalculatorScreenState createState() => HPPCalculatorScreenState();
+}
+
+class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -71,14 +82,17 @@ class HPPCalculatorScreen extends StatelessWidget {
                 VariableCostWidget(
                   variableCosts: hppProvider.data.variableCosts,
                   onDataChanged: () {
-                    // Data sudah auto-sync via provider
+                    // FIXED: Notify sync controller when HPP data changes
+                    widget.syncController.onHppDataChanged();
                   },
                   onAddItem: (nama, totalHarga, jumlah, satuan) {
                     hppProvider.addVariableCost(
                         nama, totalHarga, jumlah, satuan);
+                    widget.syncController.onHppDataChanged();
                   },
                   onRemoveItem: (index) {
                     hppProvider.removeVariableCost(index);
+                    widget.syncController.onHppDataChanged();
                   },
                 ),
 
@@ -88,13 +102,15 @@ class HPPCalculatorScreen extends StatelessWidget {
                 FixedCostWidget(
                   fixedCosts: hppProvider.data.fixedCosts,
                   onDataChanged: () {
-                    // Data sudah auto-sync via provider
+                    widget.syncController.onHppDataChanged();
                   },
                   onAddItem: (jenis, nominal) {
                     hppProvider.addFixedCost(jenis, nominal);
+                    widget.syncController.onHppDataChanged();
                   },
                   onRemoveItem: (index) {
                     hppProvider.removeFixedCost(index);
+                    widget.syncController.onHppDataChanged();
                   },
                 ),
 
@@ -111,10 +127,12 @@ class HPPCalculatorScreen extends StatelessWidget {
                   onEstimasiPorsiChanged: (value) {
                     hppProvider.updateEstimasi(
                         value, hppProvider.data.estimasiProduksiBulanan);
+                    widget.syncController.onHppDataChanged();
                   },
                   onEstimasiProduksiChanged: (value) {
                     hppProvider.updateEstimasi(
                         hppProvider.data.estimasiPorsi, value);
+                    widget.syncController.onHppDataChanged();
                   },
                 ),
 
@@ -133,7 +151,7 @@ class HPPCalculatorScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildErrorMessage(BuildContext context, HPPProvider provider) {
+  Widget _buildErrorMessage(BuildContext context, AppStateProvider appState) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppConstants.smallPadding),
@@ -149,13 +167,13 @@ class HPPCalculatorScreen extends StatelessWidget {
           const SizedBox(width: AppConstants.smallPadding),
           Expanded(
             child: Text(
-              provider.errorMessage!,
+              appState.errorMessage!,
               style: const TextStyle(color: AppColors.error, fontSize: 14),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
-            onPressed: () => provider.clearError(),
+            onPressed: () => appState.clearError(),
             color: AppColors.error,
           ),
         ],
@@ -163,7 +181,7 @@ class HPPCalculatorScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDataSummaryCard(HPPProvider provider) {
+  Widget _buildDataSummaryCard(AppStateProvider appState) {
     return Card(
       elevation: AppConstants.cardElevation,
       child: Padding(
@@ -186,18 +204,16 @@ class HPPCalculatorScreen extends StatelessWidget {
               children: [
                 _buildSummaryItem(
                     'Bahan',
-                    provider.data.variableCosts.length.toString(),
+                    appState.sharedData.variableCosts.length.toString(),
                     AppColors.success),
                 _buildSummaryItem(
                     'Fixed Cost',
-                    provider.data.fixedCosts.length.toString(),
+                    appState.sharedData.fixedCosts.length.toString(),
                     AppColors.secondary),
                 _buildSummaryItem(
                     'Status',
-                    provider.lastCalculationResult?.isValid == true
-                        ? 'Valid'
-                        : 'Invalid',
-                    provider.lastCalculationResult?.isValid == true
+                    appState.hppResult?.isValid == true ? 'Valid' : 'Invalid',
+                    appState.hppResult?.isValid == true
                         ? AppColors.success
                         : AppColors.error),
               ],
@@ -330,24 +346,8 @@ class HPPCalculatorScreen extends StatelessWidget {
 
     if (shouldReset == true) {
       try {
-        // Show loading
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 16),
-                  Text('🗑️ Clearing data...'),
-                ],
-              ),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
+        provider.resetData();
+        widget.syncController.onHppDataChanged();
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -357,9 +357,6 @@ class HPPCalculatorScreen extends StatelessWidget {
               duration: Duration(seconds: 3),
             ),
           );
-
-          // Show reset confirmation
-          _showResetSuccessDialog(context);
         }
       } catch (e) {
         debugPrint('❌ Reset error: $e');
@@ -369,57 +366,10 @@ class HPPCalculatorScreen extends StatelessWidget {
               content: Text('❌ Reset failed: ${e.toString()}'),
               backgroundColor: AppColors.error,
               duration: const Duration(seconds: 4),
-              action: SnackBarAction(
-                label: 'RETRY',
-                textColor: Colors.white,
-                onPressed: () => _handleReset(context, provider),
-              ),
             ),
           );
         }
       }
     }
-  }
-
-  void _showResetSuccessDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.refresh, color: AppColors.warning),
-            SizedBox(width: 8),
-            Text('Data Reset Complete'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('🔄 All calculation data has been cleared'),
-            SizedBox(height: 8),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color.fromRGBO(33, 150, 243, 0.1),
-                borderRadius: BorderRadius.all(Radius.circular(8)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(8),
-                child: Text(
-                  '💡 You can start fresh with new calculations',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 }

@@ -1,4 +1,4 @@
-// lib/main.dart - FIXED: COMPLETELY ELIMINATES ALL LOOPS
+// lib/main.dart - CRITICAL FIX: ELIMINATED PROVIDER LOOPS
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -13,7 +13,6 @@ import 'utils/constants.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // FIXED: Simplified error handling
   FlutterError.onError = (FlutterErrorDetails details) {
     debugPrint('🚨 Flutter Error: ${details.exception}');
   };
@@ -57,10 +56,19 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
   bool _isInitialized = false;
   String? _initError;
 
+  // FIXED: Centralized data synchronization controller
+  final DataSyncController _syncController = DataSyncController();
+
   @override
   void initState() {
     super.initState();
     _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    _syncController.dispose();
+    super.dispose();
   }
 
   Future<void> _initializeApp() async {
@@ -70,41 +78,35 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       await Future.delayed(const Duration(milliseconds: 100));
       if (!mounted) return;
 
-      try {
-        final hppProvider = Provider.of<HPPProvider>(context, listen: false);
-        final operationalProvider =
-            Provider.of<OperationalProvider>(context, listen: false);
-        final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+      final hppProvider = Provider.of<HPPProvider>(context, listen: false);
+      final operationalProvider =
+          Provider.of<OperationalProvider>(context, listen: false);
+      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-        // FIXED: Initialize providers INDEPENDENTLY - NO CROSS-COMMUNICATION
-        debugPrint('📊 Initializing HPP Provider...');
-        await hppProvider.initializeFromStorage();
+      // FIXED: Initialize providers INDEPENDENTLY - NO CROSS-COMMUNICATION
+      debugPrint('📊 Initializing HPP Provider...');
+      await hppProvider.initializeFromStorage();
 
-        debugPrint('👥 Initializing Operational Provider...');
-        await operationalProvider.initializeFromStorage();
+      debugPrint('👥 Initializing Operational Provider...');
+      await operationalProvider.initializeFromStorage();
 
-        debugPrint('🍽️ Initializing Menu Provider...');
-        await menuProvider.initializeFromStorage();
+      debugPrint('🍽️ Initializing Menu Provider...');
+      await menuProvider.initializeFromStorage();
 
-        // FIXED: NO AUTOMATIC SYNCING AT ALL
-        debugPrint('✅ All providers initialized INDEPENDENTLY');
+      // FIXED: Setup centralized sync controller AFTER initialization
+      _syncController.initialize(
+        hppProvider: hppProvider,
+        operationalProvider: operationalProvider,
+        menuProvider: menuProvider,
+      );
 
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-            _initError = null;
-          });
-        }
-      } catch (e, stackTrace) {
-        debugPrint('❌ Error during provider initialization: $e');
-        debugPrint('Stack trace: $stackTrace');
+      debugPrint('✅ All providers initialized INDEPENDENTLY');
 
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-            _initError = e.toString();
-          });
-        }
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _initError = null;
+        });
       }
     } catch (e, stackTrace) {
       debugPrint('❌ Critical initialization error: $e');
@@ -170,21 +172,20 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // FIXED: COMPLETELY REMOVED ALL AUTOMATIC SYNCING
+    // FIXED: Simple navigation without automatic syncing
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: const [
-          HPPCalculatorScreen(),
-          OperationalCalculatorScreen(),
-          MenuCalculatorScreen(),
+        children: [
+          HPPCalculatorScreen(syncController: _syncController),
+          OperationalCalculatorScreen(syncController: _syncController),
+          MenuCalculatorScreen(syncController: _syncController),
         ],
       ),
       bottomNavigationBar:
           Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
         builder:
             (context, hppProvider, operationalProvider, menuProvider, child) {
-          // FIXED: NO SYNCING HERE - ONLY UI BUILDING
           return _buildBottomNavigationBar(
               hppProvider, operationalProvider, menuProvider);
         },
@@ -203,7 +204,8 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         setState(() {
           _currentIndex = index;
         });
-        // FIXED: NO SYNCING ON TAB CHANGES
+        // FIXED: Manual sync only when switching tabs
+        _syncController.syncOnTabSwitch();
       },
       type: BottomNavigationBarType.fixed,
       elevation: 8,
