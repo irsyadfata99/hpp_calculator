@@ -1,16 +1,67 @@
-// lib/services/universal_unit_service.dart - FIXED VERSION: PROPER INDONESIAN UNITS
+// lib/services/universal_unit_service.dart - FIXED VERSION
 
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import '../utils/formatters.dart';
 
 class UniversalUnitService {
-  /// Units untuk belanja bahan (HPP Calculator) - sesuai permintaan user
+  // FIXED: Separate maps for unit info and conversion multipliers
+  static final Map<String, String> _unitBaseTypes = {
+    // Weight units
+    'Ton': 'gram',
+    'Kuintal': 'gram',
+    'Kilogram (kg)': 'gram',
+    'Gram (gr)': 'gram',
+    'Ons': 'gram',
+
+    // Volume units
+    'Liter (L)': 'ml',
+    'Mililiter (ml)': 'ml',
+
+    // Length units
+    'Meter (m)': 'cm',
+    'Centimeter (cm)': 'cm',
+
+    // Piece units
+    'pcs (pieces)': 'pieces',
+    'unit': 'pieces',
+    'Pack': 'pieces',
+    'Lusin': 'pieces',
+    'Gross': 'pieces',
+  };
+
+  static final Map<String, double> _unitMultipliers = {
+    // Weight conversions (to grams as base)
+    'Ton': 1000000.0,
+    'Kuintal': 100000.0,
+    'Kilogram (kg)': 1000.0,
+    'Gram (gr)': 1.0,
+    'Ons': 100.0,
+
+    // Volume conversions (to ml as base)
+    'Liter (L)': 1000.0,
+    'Mililiter (ml)': 1.0,
+
+    // Length conversions (to cm as base)
+    'Meter (m)': 100.0,
+    'Centimeter (cm)': 1.0,
+
+    // Piece units (no conversion needed)
+    'pcs (pieces)': 1.0,
+    'unit': 1.0,
+    'Pack': 1.0,
+    'Lusin': 12.0,
+    'Gross': 144.0,
+  };
+
+  /// Units untuk belanja bahan (HPP Calculator) - FIXED
   static List<String> getPackageUnits() {
     return [
+      'unit', // ✅ FIXED: Added default unit
+      'pcs (pieces)', // ✅ FIXED: Added pieces
+      'Kilogram (kg)',
       'Ton',
       'Kuintal',
-      'Kilogram (kg)',
       'Liter (L)',
       'Lusin',
       'Gross',
@@ -22,15 +73,149 @@ class UniversalUnitService {
   /// Units untuk komposisi menu (Menu Calculator) - sesuai permintaan user
   static List<String> getUsageUnits() {
     return [
-      AppConstants
-          .defaultUsageUnit, // % (Persentase) - tetap ada untuk fleksibilitas
+      AppConstants.defaultUsageUnit, // % (Persentase)
+      'Gram (gr)', // ✅ Most common for cooking
+      'Mililiter (ml)', // ✅ Most common for liquids
+      'Centimeter (cm)', // For fabrics
+      'pcs (pieces)', // For countable items
       'Kilogram (kg)',
-      'Gram (gr)',
       'Ons',
-      'Mililiter (ml)',
-      'Centimeter (cm)',
-      'pcs (pieces)',
     ];
+  }
+
+  /// FIXED: Smart unit conversion calculation
+  static CalculationResult calculateConvertedUnitCost({
+    required double totalPrice,
+    required double packageQuantity,
+    required String packageUnit,
+    required double unitsUsed,
+    required String usageUnit,
+  }) {
+    try {
+      // Validate inputs
+      final priceValidation =
+          InputValidator.validatePrice(totalPrice.toString());
+      if (priceValidation != null) {
+        return CalculationResult.error('Total harga: $priceValidation');
+      }
+
+      // Check if conversion is needed
+      if (packageUnit == usageUnit) {
+        // No conversion needed - direct calculation
+        return calculateUnitCost(
+          totalPrice: totalPrice,
+          packageQuantity: packageQuantity,
+          unitsUsed: unitsUsed,
+        );
+      }
+
+      // Check if units are convertible
+      if (!_areUnitsConvertible(packageUnit, usageUnit)) {
+        return CalculationResult.error(
+            'Cannot convert from $packageUnit to $usageUnit - different unit types');
+      }
+
+      // Convert package quantity to usage unit
+      double convertedPackageQuantity = _convertUnits(
+        value: packageQuantity,
+        fromUnit: packageUnit,
+        toUnit: usageUnit,
+      );
+
+      if (convertedPackageQuantity <= 0) {
+        return CalculationResult.error('Unit conversion failed');
+      }
+
+      // Calculate cost with converted units
+      double pricePerUsageUnit = totalPrice / convertedPackageQuantity;
+      double totalCost = pricePerUsageUnit * unitsUsed;
+
+      // Validate result
+      if (totalCost > AppConstants.maxPrice) {
+        return CalculationResult.error('Hasil perhitungan terlalu besar');
+      }
+
+      return CalculationResult.success(
+        cost: totalCost,
+        calculation:
+            '${AppFormatters.formatRupiah(totalPrice)} ÷ ${convertedPackageQuantity.toStringAsFixed(3)} $usageUnit × ${unitsUsed.toStringAsFixed(3)} $usageUnit = ${AppFormatters.formatRupiah(totalCost)}',
+        unitUsed: '$unitsUsed $usageUnit (dari $packageQuantity $packageUnit)',
+      );
+    } catch (e) {
+      return CalculationResult.error('Error in calculation: ${e.toString()}');
+    }
+  }
+
+  /// Check if two units can be converted
+  static bool _areUnitsConvertible(String unit1, String unit2) {
+    if (unit1 == unit2) return true;
+
+    var unit1BaseType = _unitBaseTypes[unit1];
+    var unit2BaseType = _unitBaseTypes[unit2];
+
+    if (unit1BaseType == null || unit2BaseType == null) return false;
+
+    // Units are convertible if they have the same base type
+    return unit1BaseType == unit2BaseType;
+  }
+
+  /// Convert value from one unit to another
+  static double _convertUnits({
+    required double value,
+    required String fromUnit,
+    required String toUnit,
+  }) {
+    if (fromUnit == toUnit) return value;
+
+    var fromMultiplier = _unitMultipliers[fromUnit];
+    var toMultiplier = _unitMultipliers[toUnit];
+
+    if (fromMultiplier == null || toMultiplier == null) {
+      // Use logging framework instead of print in production
+      debugPrint('❌ Unknown units: $fromUnit -> $toUnit');
+      return 0.0;
+    }
+
+    var fromBaseType = _unitBaseTypes[fromUnit];
+    var toBaseType = _unitBaseTypes[toUnit];
+
+    if (fromBaseType != toBaseType) {
+      debugPrint('❌ Cannot convert different unit types: $fromUnit -> $toUnit');
+      return 0.0;
+    }
+
+    // Convert: value * fromMultiplier / toMultiplier
+    double result = (value * fromMultiplier) / toMultiplier;
+
+    debugPrint('✅ Unit conversion: $value $fromUnit = $result $toUnit');
+    return result;
+  }
+
+  /// FIXED: Enhanced calculate cost with unit conversion support
+  static CalculationResult calculateSmartCost({
+    required double totalPrice,
+    required double packageQuantity,
+    required String packageUnit,
+    required double usageAmount,
+    required String usageUnit,
+  }) {
+    // Handle percentage calculation
+    if (usageUnit == '%' || usageUnit == AppConstants.defaultUsageUnit) {
+      return calculatePercentageCost(
+        totalPrice: totalPrice,
+        packageQuantity: packageQuantity,
+        percentageUsed: usageAmount,
+      );
+    }
+
+    // Handle unit conversion calculation
+    return calculateConvertedUnitCost(
+      totalPrice: totalPrice,
+      packageQuantity: packageQuantity,
+      packageUnit: packageUnit,
+      unitsUsed: usageAmount,
+      usageUnit: usageUnit,
+    );
   }
 
   /// Calculate cost berdasarkan percentage dengan validation
@@ -496,6 +681,88 @@ class UniversalUnitService {
       isOptimal:
           level == EfficiencyLevel.excellent || level == EfficiencyLevel.good,
     );
+  }
+
+  /// Helper function for debug printing (replaces print statements)
+  static void debugPrint(String message) {
+    // In production, you could use a proper logging framework
+    // For now, this is a placeholder that could be replaced with:
+    // - logger.debug(message)
+    // - Developer.log(message)
+    // - or simply removed in production builds
+    assert(() {
+      print(message); // Only prints in debug mode
+      return true;
+    }());
+  }
+
+  // Tambahkan method ini ke UniversalUnitService untuk testing
+  // ... existing code ...
+
+  /// DEBUG: Test unit conversion untuk troubleshooting
+  static void debugUnitConversion() {
+    print("=== TESTING UNIT CONVERSION ===");
+
+    // Test case 1: Kilogram to Gram
+    print("\n1. Testing Kilogram to Gram:");
+    print("Available units: ${_unitBaseTypes.keys.toList()}");
+
+    bool canConvert1 = _areUnitsConvertible('Kilogram (kg)', 'Gram (gr)');
+    print("Can convert Kilogram (kg) → Gram (gr): $canConvert1");
+
+    if (canConvert1) {
+      double result1 = _convertUnits(
+        value: 5.0,
+        fromUnit: 'Kilogram (kg)',
+        toUnit: 'Gram (gr)',
+      );
+      print("5 Kilogram (kg) = $result1 Gram (gr)");
+      print("Expected: 5000, Got: $result1, Match: ${result1 == 5000}");
+    }
+
+    // Test case 2: Liter to Mililiter
+    print("\n2. Testing Liter to Mililiter:");
+    bool canConvert2 = _areUnitsConvertible('Liter (L)', 'Mililiter (ml)');
+    print("Can convert Liter (L) → Mililiter (ml): $canConvert2");
+
+    if (canConvert2) {
+      double result2 = _convertUnits(
+        value: 1.0,
+        fromUnit: 'Liter (L)',
+        toUnit: 'Mililiter (ml)',
+      );
+      print("1 Liter (L) = $result2 Mililiter (ml)");
+      print("Expected: 1000, Got: $result2, Match: ${result2 == 1000}");
+    }
+
+    // Test case 3: Full calculation
+    print("\n3. Testing Full Calculation:");
+    var result = calculateSmartCost(
+      totalPrice: 350000.0,
+      packageQuantity: 5.0,
+      packageUnit: 'Kilogram (kg)',
+      usageAmount: 25.0,
+      usageUnit: 'Gram (gr)',
+    );
+
+    print("Calculation success: ${result.isSuccess}");
+    if (result.isSuccess) {
+      print("Cost: ${result.cost}");
+      print("Expected: ~1750, Got: ${result.cost}");
+    } else {
+      print("Error: ${result.errorMessage}");
+    }
+
+    print("\n=== END TEST ===");
+  }
+
+  /// DEBUG: Print semua unit yang tersedia
+  static void printAvailableUnits() {
+    print("=== AVAILABLE UNITS ===");
+    print("Package Units: ${getPackageUnits()}");
+    print("Usage Units: ${getUsageUnits()}");
+    print("Base Types: $_unitBaseTypes");
+    print("Multipliers: $_unitMultipliers");
   }
 }
 

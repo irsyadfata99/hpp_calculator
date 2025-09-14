@@ -1,4 +1,4 @@
-// lib/services/menu_calculator_service.dart - FIXED VERSION: NULL SAFETY OPERATORS
+// lib/services/menu_calculator_service.dart - FIXED VERSION: PROPER UNIT CALCULATIONS
 
 import '../models/menu_model.dart';
 import '../models/shared_calculation_data.dart';
@@ -45,8 +45,6 @@ class MenuCalculationResult {
 
 class MenuCalculatorService {
   /// Menghitung biaya bahan baku untuk menu spesifik
-  ///
-  /// Rumus: Total Biaya Bahan Menu = Σ(Jumlah Dipakai × Harga per Satuan)
   static double calculateMenuBahanBakuCost(List<MenuComposition> komposisi) {
     if (komposisi.isEmpty) return 0.0;
 
@@ -54,7 +52,6 @@ class MenuCalculatorService {
   }
 
   /// Menghitung proporsi fixed cost untuk menu
-  /// Berdasarkan rasio bahan baku menu terhadap total variable cost
   static double calculateFixedCostProportion({
     required double biayaBahanBakuMenu,
     required double totalBiayaBahanBaku,
@@ -62,7 +59,6 @@ class MenuCalculatorService {
   }) {
     if (totalBiayaBahanBaku <= 0 || biayaBahanBakuMenu <= 0) return 0.0;
 
-    // Proporsi fixed cost berdasarkan kompleksitas menu
     double proportion = biayaBahanBakuMenu / totalBiayaBahanBaku;
     return biayaFixedPerPorsi * proportion;
   }
@@ -75,14 +71,11 @@ class MenuCalculatorService {
   }) {
     if (totalBiayaBahanBaku <= 0 || biayaBahanBakuMenu <= 0) return 0.0;
 
-    // Proporsi operational cost berdasarkan kompleksitas menu
     double proportion = biayaBahanBakuMenu / totalBiayaBahanBaku;
     return operationalCostPerPorsi * proportion;
   }
 
   /// Menghitung harga jual dengan margin
-  ///
-  /// Rumus: Harga Jual = HPP Murni Menu × (1 + Margin%)
   static double calculateSellingPrice({
     required double hppMurniPerMenu,
     required double marginPercentage,
@@ -93,8 +86,6 @@ class MenuCalculatorService {
   }
 
   /// Menghitung profit per menu
-  ///
-  /// Rumus: Profit = Harga Jual - HPP Murni Menu
   static double calculateProfitPerMenu({
     required double hargaSetelahMargin,
     required double hppMurniPerMenu,
@@ -103,27 +94,23 @@ class MenuCalculatorService {
   }
 
   /// Perhitungan lengkap untuk menu spesifik
-  /// Fokus pada racik menu (resep) sebagai unit perhitungan
   static MenuCalculationResult calculateMenuCost({
     required MenuItem menu,
     required SharedCalculationData sharedData,
     required double marginPercentage,
   }) {
     try {
-      // Validasi input menggunakan konstanta dari AppConstants
       if (menu.komposisi.isEmpty) {
         return MenuCalculationResult.error(
             'Menu harus memiliki minimal 1 komposisi bahan');
       }
 
-      // Validasi margin percentage
       if (marginPercentage < AppConstants.minPercentage ||
           marginPercentage > AppConstants.maxPercentage) {
         return MenuCalculationResult.error(
             'Margin harus antara ${AppConstants.minPercentage}% - ${AppConstants.maxPercentage}%');
       }
 
-      // Validasi komposisi menu
       for (var komposisi in menu.komposisi) {
         if (komposisi.namaIngredient.trim().isEmpty) {
           return MenuCalculationResult.error(AppConstants.errorEmptyName);
@@ -146,11 +133,9 @@ class MenuCalculatorService {
       }
 
       // 1. Hitung biaya bahan baku untuk menu ini (resep)
-      // Ini adalah biaya murni untuk membuat 1 porsi menu ini
       double biayaBahanBakuMenu = calculateMenuBahanBakuCost(menu.komposisi);
 
       // 2. Hitung proporsi fixed cost untuk menu ini
-      // Berdasarkan kompleksitas resep (rasio biaya bahan terhadap total variable cost)
       double totalBiayaBahanBaku = 0.0;
       for (var item in sharedData.variableCosts) {
         final totalHarga = item['totalHarga'];
@@ -161,7 +146,6 @@ class MenuCalculatorService {
 
       double biayaFixedPerMenu = 0.0;
       if (totalBiayaBahanBaku > 0) {
-        // Proporsi fixed cost berdasarkan kompleksitas resep
         double proporsi = biayaBahanBakuMenu / totalBiayaBahanBaku;
         biayaFixedPerMenu = sharedData.biayaFixedPerPorsi * proporsi * 1.5;
       }
@@ -212,12 +196,11 @@ class MenuCalculatorService {
     return HPPCalculatorService.formatRupiah(amount);
   }
 
-  /// FIXED: Enhanced getAvailableIngredients with removed redundant null-aware operators
+  /// FIXED: Enhanced getAvailableIngredients with PROPER UNIT PRICE CALCULATION
   /// Mendapatkan daftar ingredient yang tersedia dari variable costs
-  /// Menghitung harga per satuan dengan benar sesuai rumus: Total Biaya ÷ Jumlah Bahan
+  /// Menghitung harga per satuan dengan benar: Total Biaya ÷ Jumlah Bahan
   static List<Map<String, dynamic>> getAvailableIngredients(
       List<Map<String, dynamic>> variableCosts) {
-    // FIXED: Enhanced validation and null safety
     if (variableCosts.isEmpty) {
       print('📋 No variable costs available for ingredients');
       return [];
@@ -227,15 +210,13 @@ class MenuCalculatorService {
 
     for (var item in variableCosts) {
       try {
-        // FIXED: Comprehensive null and type checking with removed redundant operators
         final nama = item['nama']?.toString().trim() ?? '';
         final totalHarga = _safeParseDouble(item['totalHarga']);
         final jumlah = _safeParseDouble(item['jumlah']);
-        // FIXED: Remove redundant null-aware operator - satuan is already being null-coalesced
         final satuan =
             item['satuan']?.toString().trim() ?? AppConstants.defaultUnit;
 
-        // FIXED: Validate all required fields
+        // Validate all required fields
         if (nama.isEmpty) {
           print('⚠️ Skipping ingredient with empty name');
           continue;
@@ -252,10 +233,10 @@ class MenuCalculatorService {
           continue;
         }
 
-        // FIXED: Calculate harga per satuan safely
+        // FIXED: Calculate PROPER harga per satuan (unit price in the SAME unit as purchased)
         double hargaPerSatuan = totalHarga / jumlah;
 
-        // FIXED: Validate calculated price against constants
+        // Validate calculated price against constants
         if (hargaPerSatuan < AppConstants.minPrice ||
             hargaPerSatuan > AppConstants.maxPrice) {
           print(
@@ -263,18 +244,30 @@ class MenuCalculatorService {
           continue;
         }
 
-        // FIXED: Create properly structured ingredient data
+        // FIXED: Create properly structured ingredient data with ORIGINAL UNITS
         validIngredients.add({
           'nama': nama,
           'totalHarga': totalHarga, // Original total price
-          'jumlah': jumlah, // Original quantity
-          'satuan': satuan, // Original unit
-          'hargaPerSatuan': hargaPerSatuan, // Calculated price per unit
+          'jumlah': jumlah, // Original quantity in purchased unit
+          'satuan': satuan, // Original purchased unit (e.g., "Kilogram (kg)")
+          'hargaPerSatuan': hargaPerSatuan, // Price per original unit
           'isValid': true,
+
+          // FIXED: Add debugging info
+          '_debug': {
+            'calculation':
+                '$totalHarga ÷ $jumlah $satuan = $hargaPerSatuan per $satuan',
+            'originalData': item,
+          },
         });
+
+        print('✅ Added ingredient: $nama');
+        print(
+            '   Purchase: $jumlah $satuan @ ${formatRupiah(totalHarga)} total');
+        print('   Unit price: ${formatRupiah(hargaPerSatuan)} per $satuan');
       } catch (e) {
         print('❌ Error processing ingredient ${item['nama']}: $e');
-        continue; // Skip invalid ingredient instead of crashing
+        continue;
       }
     }
 
@@ -283,7 +276,7 @@ class MenuCalculatorService {
     return validIngredients;
   }
 
-  // FIXED: Safe double parser helper method
+  /// FIXED: Safe double parser with comprehensive error handling
   static double _safeParseDouble(dynamic value) {
     if (value == null) return 0.0;
 
@@ -301,6 +294,11 @@ class MenuCalculatorService {
       if (value is String) {
         String cleaned = value.trim();
         if (cleaned.isEmpty) return 0.0;
+
+        // Clean Rupiah formatting
+        cleaned = cleaned.replaceAll(RegExp(r'[Rp\s,\.]'), '');
+        if (cleaned.isEmpty) return 0.0;
+
         double? parsed = double.tryParse(cleaned);
         return (parsed != null && parsed.isFinite) ? parsed : 0.0;
       }
@@ -338,7 +336,6 @@ class MenuCalculatorService {
     String rekomendasi;
     String status;
 
-    // Menggunakan konstanta AppConstants untuk kategorisasi margin
     if (result.marginPercentage >= AppConstants.maxPercentage) {
       kategori = 'Premium';
       rekomendasi = 'Margin sangat tinggi, cocok untuk menu premium';
@@ -379,7 +376,6 @@ class MenuCalculatorService {
       };
     }
 
-    // Breakdown biaya
     Map<String, double> costBreakdown = {
       'bahanBaku': result.biayaBahanBakuMenu,
       'fixedCost': result.biayaFixedPerMenu,
@@ -387,7 +383,6 @@ class MenuCalculatorService {
       'profit': result.profitPerMenu,
     };
 
-    // Rekomendasi berdasarkan analisis
     List<String> recommendations = [];
 
     double bahanBakuRatio =
@@ -408,5 +403,42 @@ class MenuCalculatorService {
       'recommendations': recommendations,
       'bahanBakuRatio': bahanBakuRatio,
     };
+  }
+
+  /// FIXED: Add debugging helper for troubleshooting unit calculations
+  static Map<String, dynamic> debugCalculation({
+    required String ingredientName,
+    required double totalHarga,
+    required double jumlah,
+    required String satuan,
+    required double usageAmount,
+    required String usageUnit,
+  }) {
+    print('🔍 DEBUG CALCULATION for $ingredientName:');
+    print('  Purchase: $jumlah $satuan @ ${formatRupiah(totalHarga)} total');
+
+    double unitPrice = totalHarga / jumlah;
+    print('  Unit price: ${formatRupiah(unitPrice)} per $satuan');
+
+    print('  Usage: $usageAmount $usageUnit');
+
+    // This is where unit conversion should happen
+    if (satuan == usageUnit) {
+      double cost = unitPrice * usageAmount;
+      print('  Same units - Direct calculation: ${formatRupiah(cost)}');
+      return {
+        'method': 'direct',
+        'cost': cost,
+        'calculation':
+            '$usageAmount $usageUnit × ${formatRupiah(unitPrice)} = ${formatRupiah(cost)}',
+      };
+    } else {
+      print('  Different units - Need conversion: $satuan → $usageUnit');
+      return {
+        'method': 'conversion_needed',
+        'cost': 0.0,
+        'calculation': 'Unit conversion required from $satuan to $usageUnit',
+      };
+    }
   }
 }
