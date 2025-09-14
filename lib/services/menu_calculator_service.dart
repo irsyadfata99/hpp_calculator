@@ -1,4 +1,4 @@
-// File: lib/services/menu_calculator_service.dart
+// lib/services/menu_calculator_service.dart - FIXED VERSION: COMPLETE NULL SAFETY
 
 import '../models/menu_model.dart';
 import '../models/shared_calculation_data.dart';
@@ -212,45 +212,102 @@ class MenuCalculatorService {
     return HPPCalculatorService.formatRupiah(amount);
   }
 
+  /// FIXED: Enhanced getAvailableIngredients with comprehensive null safety and validation
   /// Mendapatkan daftar ingredient yang tersedia dari variable costs
   /// Menghitung harga per satuan dengan benar sesuai rumus: Total Biaya ÷ Jumlah Bahan
   static List<Map<String, dynamic>> getAvailableIngredients(
       List<Map<String, dynamic>> variableCosts) {
-    // Validasi input menggunakan konstanta
-    if (variableCosts.isEmpty) return [];
+    // FIXED: Enhanced validation and null safety
+    if (variableCosts.isEmpty) {
+      print('📋 No variable costs available for ingredients');
+      return [];
+    }
 
-    return variableCosts
-        .map((item) {
-          final totalHarga = item['totalHarga'];
-          final jumlah = item['jumlah'];
-          final nama = item['nama'] ?? '';
-          final satuan = item['satuan'] ?? AppConstants.defaultUnit;
+    List<Map<String, dynamic>> validIngredients = [];
 
-          // Validasi data item
-          if (nama.trim().isEmpty) return null;
+    for (var item in variableCosts) {
+      try {
+        // FIXED: Comprehensive null and type checking
+        final nama = item['nama']?.toString()?.trim() ?? '';
+        final totalHarga = _safeParseDouble(item['totalHarga']);
+        final jumlah = _safeParseDouble(item['jumlah']);
+        final satuan =
+            item['satuan']?.toString()?.trim() ?? AppConstants.defaultUnit;
 
-          double hargaPerSatuan = 0.0;
-          if (totalHarga is num && jumlah is num && jumlah > 0) {
-            // Rumus: Biaya per Satuan = Total Biaya Bahan Baku ÷ Jumlah Bahan Baku
-            hargaPerSatuan = totalHarga.toDouble() / jumlah.toDouble();
+        // FIXED: Validate all required fields
+        if (nama.isEmpty) {
+          print('⚠️ Skipping ingredient with empty name');
+          continue;
+        }
 
-            // Validasi harga per satuan sesuai konstanta
-            if (hargaPerSatuan < AppConstants.minPrice ||
-                hargaPerSatuan > AppConstants.maxPrice) {
-              return null; // Skip item dengan harga tidak valid
-            }
-          }
+        if (totalHarga <= 0) {
+          print(
+              '⚠️ Skipping ingredient $nama with invalid totalHarga: $totalHarga');
+          continue;
+        }
 
-          return {
-            'nama': nama.trim(),
-            'satuan': satuan,
-            'hargaPerSatuan': hargaPerSatuan, // Sudah dihitung per satuan
-            'stok': jumlah is num ? jumlah.toDouble() : 0.0,
-          };
-        })
-        .where((item) => item != null)
-        .cast<Map<String, dynamic>>()
-        .toList();
+        if (jumlah <= 0) {
+          print('⚠️ Skipping ingredient $nama with invalid jumlah: $jumlah');
+          continue;
+        }
+
+        // FIXED: Calculate harga per satuan safely
+        double hargaPerSatuan = totalHarga / jumlah;
+
+        // FIXED: Validate calculated price against constants
+        if (hargaPerSatuan < AppConstants.minPrice ||
+            hargaPerSatuan > AppConstants.maxPrice) {
+          print(
+              '⚠️ Skipping ingredient $nama with invalid calculated price: $hargaPerSatuan');
+          continue;
+        }
+
+        // FIXED: Create properly structured ingredient data
+        validIngredients.add({
+          'nama': nama,
+          'totalHarga': totalHarga, // Original total price
+          'jumlah': jumlah, // Original quantity
+          'satuan': satuan, // Original unit
+          'hargaPerSatuan': hargaPerSatuan, // Calculated price per unit
+          'isValid': true,
+        });
+      } catch (e) {
+        print('❌ Error processing ingredient ${item['nama']}: $e');
+        continue; // Skip invalid ingredient instead of crashing
+      }
+    }
+
+    print(
+        '✅ Processed ${validIngredients.length} valid ingredients from ${variableCosts.length} items');
+    return validIngredients;
+  }
+
+  // FIXED: Safe double parser helper method
+  static double _safeParseDouble(dynamic value) {
+    if (value == null) return 0.0;
+
+    try {
+      if (value is double) {
+        return value.isFinite ? value : 0.0;
+      }
+      if (value is int) {
+        return value.toDouble();
+      }
+      if (value is num) {
+        double parsed = value.toDouble();
+        return parsed.isFinite ? parsed : 0.0;
+      }
+      if (value is String) {
+        String cleaned = value.trim();
+        if (cleaned.isEmpty) return 0.0;
+        double? parsed = double.tryParse(cleaned);
+        return (parsed != null && parsed.isFinite) ? parsed : 0.0;
+      }
+      return 0.0;
+    } catch (e) {
+      print('❌ Error parsing double from: $value');
+      return 0.0;
+    }
   }
 
   /// Validasi apakah komposisi menu valid

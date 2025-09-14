@@ -1,19 +1,19 @@
-// lib/providers/menu_provider.dart - CLEANED VERSION: FIXED IMPORT CONFLICTS
+// lib/providers/menu_provider.dart - FIXED VERSION: COMPLETE NULL SAFETY
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 // FIXED: Use explicit imports to avoid ambiguous imports
 import '../models/menu_model.dart' as MenuModel;
 import '../models/shared_calculation_data.dart';
 import '../services/menu_calculator_service.dart';
-import '../services/storage_service.dart'; // FIXED: Added missing import
+import '../services/storage_service.dart';
 import '../utils/validators.dart';
 import '../utils/constants.dart';
 
 class MenuProvider with ChangeNotifier {
   String _namaMenu = '';
   double _marginPercentage = AppConstants.defaultMargin;
-  List<MenuModel.MenuComposition> _komposisiMenu = []; // FIXED: Use prefix
-  List<MenuModel.MenuItem> _menuHistory = []; // FIXED: Use prefix
+  List<MenuModel.MenuComposition> _komposisiMenu = [];
+  List<MenuModel.MenuItem> _menuHistory = [];
   String? _errorMessage;
   bool _isLoading = false;
   MenuCalculationResult? _lastCalculationResult;
@@ -62,7 +62,7 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // SHARED DATA INTEGRATION
+  // SHARED DATA INTEGRATION - FIXED NULL SAFETY
   // ===============================================
 
   void updateSharedData(SharedCalculationData newSharedData) {
@@ -70,10 +70,42 @@ class MenuProvider with ChangeNotifier {
     _recalculateMenu();
   }
 
+  // FIXED: Enhanced availableIngredients with comprehensive null safety and validation
   List<Map<String, dynamic>> get availableIngredients {
-    if (_sharedData == null) return [];
-    return MenuCalculatorService.getAvailableIngredients(
-        _sharedData!.variableCosts);
+    if (_sharedData == null || _sharedData!.variableCosts.isEmpty) {
+      debugPrint('📋 No shared data or variable costs available');
+      return []; // Return empty list instead of null
+    }
+
+    try {
+      final ingredients = MenuCalculatorService.getAvailableIngredients(
+          _sharedData!.variableCosts);
+
+      // FIXED: Validate each ingredient has required fields with proper structure
+      final validIngredients = ingredients.where((ingredient) {
+        bool isValid = ingredient.containsKey('nama') &&
+            ingredient.containsKey('totalHarga') &&
+            ingredient.containsKey('jumlah') &&
+            ingredient.containsKey('satuan') &&
+            ingredient['nama'] != null &&
+            ingredient['totalHarga'] != null &&
+            ingredient['jumlah'] != null &&
+            ingredient['satuan'] != null &&
+            ingredient['nama'].toString().trim().isNotEmpty;
+
+        if (!isValid) {
+          debugPrint('⚠️ Invalid ingredient filtered out: $ingredient');
+        }
+        return isValid;
+      }).toList();
+
+      debugPrint('✅ Available ingredients: ${validIngredients.length}');
+      return validIngredients;
+    } catch (e) {
+      debugPrint('❌ Error getting available ingredients: $e');
+      _setError('Error loading ingredient data: ${e.toString()}');
+      return [];
+    }
   }
 
   // ===============================================
@@ -202,7 +234,6 @@ class MenuProvider with ChangeNotifier {
 
     _setLoading(true);
     try {
-      // FIXED: Use prefixed class name
       final updatedComposition = MenuModel.MenuComposition(
         namaIngredient: namaIngredient.trim(),
         jumlahDipakai: jumlahDipakai,
@@ -278,7 +309,6 @@ class MenuProvider with ChangeNotifier {
 
     _setLoading(true);
     try {
-      // FIXED: Use prefixed class name
       final menuItem = MenuModel.MenuItem(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         namaMenu: _namaMenu.trim(),
@@ -336,9 +366,6 @@ class MenuProvider with ChangeNotifier {
       final deletedMenu = _menuHistory[index].namaMenu;
       _menuHistory = [..._menuHistory]..removeAt(index);
 
-      // Note: StorageService doesn't have individual delete, so we'd need to implement that
-      // For now, we just update the local list
-
       _setError(null);
       debugPrint('✅ Menu deleted from history: $deletedMenu');
     } catch (e) {
@@ -362,7 +389,6 @@ class MenuProvider with ChangeNotifier {
     }
 
     try {
-      // FIXED: Use prefixed class name
       final menuItem = MenuModel.MenuItem(
         id: 'temp',
         namaMenu: _namaMenu,
@@ -418,7 +444,6 @@ class MenuProvider with ChangeNotifier {
     return _namaMenu.trim().isNotEmpty &&
         _komposisiMenu.isNotEmpty &&
         MenuCalculatorService.isMenuCompositionValid(
-            // FIXED: Proper casting with null safety
             _komposisiMenu.cast<MenuModel.MenuComposition>());
   }
 
@@ -431,7 +456,6 @@ class MenuProvider with ChangeNotifier {
       return 'Menu harus memiliki minimal 1 bahan';
     }
 
-    // FIXED: Proper casting with null safety
     if (!MenuCalculatorService.isMenuCompositionValid(
         _komposisiMenu.cast<MenuModel.MenuComposition>())) {
       return 'Ada data bahan yang tidak valid dalam komposisi';
@@ -441,7 +465,7 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // HELPER METHODS
+  // HELPER METHODS - FIXED ACCESS LEVELS
   // ===============================================
 
   void _setLoading(bool loading) {

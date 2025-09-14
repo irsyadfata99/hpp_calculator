@@ -1,4 +1,4 @@
-// File: lib/widgets/menu_ingredient_selector_widget.dart (Universal - Fixed)
+// lib/widgets/menu/menu_ingredient_selector_widget.dart - FIXED VERSION: COMPLETE NULL SAFETY
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,67 +39,134 @@ class MenuIngredientSelectorWidgetState
     _jumlahController.clear();
   }
 
-  // Calculate cost berdasarkan mode yang dipilih - FIXED
+  // FIXED: Calculate cost with complete null safety and error handling
   double _calculateCost() {
     if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
       return 0.0;
     }
 
-    var ingredient = widget.availableIngredients
-        .firstWhere((item) => item['nama'] == _selectedIngredient);
-
-    double jumlah = double.tryParse(_jumlahController.text) ?? 0;
-
-    CalculationResult result;
-    if (_selectedSatuan == '%') {
-      // Percentage mode
-      result = UniversalUnitService.calculatePercentageCost(
-        totalPrice: ingredient['totalHarga'],
-        packageQuantity: ingredient['jumlah'],
-        percentageUsed: jumlah,
+    try {
+      // FIXED: Safe ingredient lookup with orElse
+      var ingredient = widget.availableIngredients.firstWhere(
+        (item) => item['nama'] == _selectedIngredient,
+        orElse: () => <String, dynamic>{}, // Return empty map if not found
       );
-    } else {
-      // Unit mode
-      result = UniversalUnitService.calculateUnitCost(
-        totalPrice: ingredient['totalHarga'],
-        packageQuantity: ingredient['jumlah'],
-        unitsUsed: jumlah,
-      );
+
+      // FIXED: Validate ingredient was found and has required data
+      if (ingredient.isEmpty ||
+          !ingredient.containsKey('totalHarga') ||
+          !ingredient.containsKey('jumlah') ||
+          ingredient['totalHarga'] == null ||
+          ingredient['jumlah'] == null) {
+        print(
+            '❌ Selected ingredient not found or invalid: $_selectedIngredient');
+        return 0.0;
+      }
+
+      double jumlah = double.tryParse(_jumlahController.text) ?? 0;
+      if (jumlah <= 0) return 0.0;
+
+      // FIXED: Safe extraction of ingredient data
+      double totalHarga = ingredient['totalHarga'] is num
+          ? (ingredient['totalHarga'] as num).toDouble()
+          : 0.0;
+      double packageQuantity = ingredient['jumlah'] is num
+          ? (ingredient['jumlah'] as num).toDouble()
+          : 0.0;
+
+      if (totalHarga <= 0 || packageQuantity <= 0) {
+        print(
+            '❌ Invalid ingredient data for calculation: totalHarga=$totalHarga, jumlah=$packageQuantity');
+        return 0.0;
+      }
+
+      CalculationResult result;
+      if (_selectedSatuan == '%') {
+        // Percentage mode
+        result = UniversalUnitService.calculatePercentageCost(
+          totalPrice: totalHarga,
+          packageQuantity: packageQuantity,
+          percentageUsed: jumlah,
+        );
+      } else {
+        // Unit mode
+        result = UniversalUnitService.calculateUnitCost(
+          totalPrice: totalHarga,
+          packageQuantity: packageQuantity,
+          unitsUsed: jumlah,
+        );
+      }
+
+      return result.isSuccess ? result.cost : 0.0;
+    } catch (e) {
+      print('❌ Error calculating cost: $e');
+      return 0.0;
     }
-
-    return result.isSuccess ? result.cost : 0.0;
   }
 
-  // Get unit price untuk reference - FIXED
+  // FIXED: Get unit price with same null safety pattern
   double _getUnitPrice() {
     if (_selectedIngredient == null) return 0.0;
 
-    var ingredient = widget.availableIngredients
-        .firstWhere((item) => item['nama'] == _selectedIngredient);
+    try {
+      var ingredient = widget.availableIngredients.firstWhere(
+        (item) => item['nama'] == _selectedIngredient,
+        orElse: () => <String, dynamic>{},
+      );
 
-    CalculationResult result = UniversalUnitService.calculateUnitPrice(
-      totalPrice: ingredient['totalHarga'],
-      packageQuantity: ingredient['jumlah'],
-    );
+      if (ingredient.isEmpty ||
+          !ingredient.containsKey('totalHarga') ||
+          !ingredient.containsKey('jumlah')) return 0.0;
 
-    return result.isSuccess ? result.cost : 0.0;
+      double totalHarga = ingredient['totalHarga'] is num
+          ? (ingredient['totalHarga'] as num).toDouble()
+          : 0.0;
+      double packageQuantity = ingredient['jumlah'] is num
+          ? (ingredient['jumlah'] as num).toDouble()
+          : 0.0;
+
+      if (totalHarga <= 0 || packageQuantity <= 0) return 0.0;
+
+      CalculationResult result = UniversalUnitService.calculateUnitPrice(
+        totalPrice: totalHarga,
+        packageQuantity: packageQuantity,
+      );
+
+      return result.isSuccess ? result.cost : 0.0;
+    } catch (e) {
+      print('❌ Error getting unit price: $e');
+      return 0.0;
+    }
   }
 
   // Build helper info berdasarkan mode
   Widget _buildCalculationHelper() {
     if (_selectedIngredient == null) return const SizedBox.shrink();
 
-    var ingredient = widget.availableIngredients
-        .firstWhere((item) => item['nama'] == _selectedIngredient);
+    try {
+      var ingredient = widget.availableIngredients.firstWhere(
+        (item) => item['nama'] == _selectedIngredient,
+        orElse: () => <String, dynamic>{},
+      );
 
-    if (_selectedSatuan == '%') {
-      return _buildPercentageHelper(ingredient);
-    } else {
-      return _buildUnitHelper(ingredient);
+      if (ingredient.isEmpty) return const SizedBox.shrink();
+
+      if (_selectedSatuan == '%') {
+        return _buildPercentageHelper(ingredient);
+      } else {
+        return _buildUnitHelper(ingredient);
+      }
+    } catch (e) {
+      print('❌ Error building calculation helper: $e');
+      return const SizedBox.shrink();
     }
   }
 
   Widget _buildPercentageHelper(Map<String, dynamic> ingredient) {
+    double totalHarga = ingredient['totalHarga'] is num
+        ? (ingredient['totalHarga'] as num).toDouble()
+        : 0.0;
+
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(10),
@@ -127,11 +194,11 @@ class MenuIngredientSelectorWidgetState
           ),
           const SizedBox(height: 6),
           Text(
-            'Total belanja: ${UniversalUnitService.formatRupiah(ingredient['totalHarga'])}',
+            'Total belanja: ${UniversalUnitService.formatRupiah(totalHarga)}',
             style: TextStyle(fontSize: 11, color: Colors.blue[700]),
           ),
           Text(
-            'Contoh: 5% = ${UniversalUnitService.formatRupiah(ingredient['totalHarga'] * 0.05)}',
+            'Contoh: 5% = ${UniversalUnitService.formatRupiah(totalHarga * 0.05)}',
             style: TextStyle(fontSize: 11, color: Colors.blue[600]),
           ),
 
@@ -154,6 +221,7 @@ class MenuIngredientSelectorWidgetState
 
   Widget _buildUnitHelper(Map<String, dynamic> ingredient) {
     double unitPrice = _getUnitPrice();
+    String satuan = ingredient['satuan']?.toString() ?? 'unit';
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -182,7 +250,7 @@ class MenuIngredientSelectorWidgetState
           ),
           const SizedBox(height: 6),
           Text(
-            'Harga per ${ingredient['satuan']}: ${UniversalUnitService.formatRupiah(unitPrice)}',
+            'Harga per $satuan: ${UniversalUnitService.formatRupiah(unitPrice)}',
             style: TextStyle(fontSize: 11, color: Colors.green[700]),
           ),
 
@@ -255,7 +323,7 @@ class MenuIngredientSelectorWidgetState
     if (_selectedIngredient != null && _jumlahController.text.isNotEmpty) {
       double? jumlah = double.tryParse(_jumlahController.text);
       if (jumlah != null && jumlah > 0) {
-        // Validate percentage jika perlu
+        // Validate percentage if needed
         if (_selectedSatuan == '%') {
           ValidationResult validation =
               UniversalUnitService.validatePercentage(jumlah);
@@ -265,7 +333,12 @@ class MenuIngredientSelectorWidgetState
         }
 
         double cost = _calculateCost();
-        double unitPrice = cost / jumlah; // Price per unit yang dipakai
+        if (cost <= 0) {
+          print('❌ Cannot add ingredient with zero cost');
+          return;
+        }
+
+        double unitPrice = cost / jumlah; // Price per unit used
 
         widget.onAddIngredient(
           _selectedIngredient!,
@@ -399,25 +472,34 @@ class MenuIngredientSelectorWidgetState
 
   Widget _buildIngredientDropdown() {
     return DropdownButtonFormField<String>(
-      initialValue: _selectedIngredient,
+      value: _selectedIngredient,
       decoration: const InputDecoration(
         labelText: 'Pilih Bahan',
         hintText: 'Pilih bahan dari daftar belanja',
         prefixIcon: Icon(Icons.inventory),
       ),
       items: widget.availableIngredients.map((ingredient) {
+        String nama = ingredient['nama']?.toString() ?? 'Unknown';
+        double jumlah = ingredient['jumlah'] is num
+            ? (ingredient['jumlah'] as num).toDouble()
+            : 0.0;
+        String satuan = ingredient['satuan']?.toString() ?? 'unit';
+        double totalHarga = ingredient['totalHarga'] is num
+            ? (ingredient['totalHarga'] as num).toDouble()
+            : 0.0;
+
         return DropdownMenuItem<String>(
-          value: ingredient['nama'],
+          value: nama,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                ingredient['nama'],
+                nama,
                 style: const TextStyle(fontWeight: FontWeight.w500),
               ),
               Text(
-                '${ingredient['jumlah']} ${ingredient['satuan']} - ${UniversalUnitService.formatRupiah(ingredient['totalHarga'])}',
+                '$jumlah $satuan - ${UniversalUnitService.formatRupiah(totalHarga)}',
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.grey[600],
@@ -462,7 +544,7 @@ class MenuIngredientSelectorWidgetState
 
   Widget _buildSatuanDropdown(List<String> units) {
     return DropdownButtonFormField<String>(
-      initialValue: _selectedSatuan,
+      value: _selectedSatuan,
       decoration: const InputDecoration(
         labelText: 'Satuan',
         prefixIcon: Icon(Icons.scale),

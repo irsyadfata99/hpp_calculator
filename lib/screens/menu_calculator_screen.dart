@@ -1,4 +1,4 @@
-// lib/screens/menu_calculator_screen.dart - CLEANED VERSION: NO EXPORT/IMPORT
+// lib/screens/menu_calculator_screen.dart - FIXED VERSION: COMPLETE ERROR HANDLING
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/menu_provider.dart';
@@ -33,8 +33,18 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     final hppProvider = Provider.of<HPPProvider>(context, listen: false);
     final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-    // Update menu provider with current HPP data
-    menuProvider.updateSharedData(hppProvider.data);
+    // FIXED: Safe provider communication with validation
+    try {
+      if (hppProvider.data.variableCosts.isNotEmpty) {
+        menuProvider.updateSharedData(hppProvider.data);
+      } else {
+        print('⚠️ HPP data is empty during setup');
+      }
+    } catch (e) {
+      print('❌ Error setting up provider communication: $e');
+      menuProvider._setError(
+          'Unable to load ingredient data. Please check HPP Calculator first.');
+    }
   }
 
   @override
@@ -43,10 +53,34 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
       appBar: _buildAppBar(),
       body: Consumer2<MenuProvider, HPPProvider>(
         builder: (context, menuProvider, hppProvider, child) {
-          // Update shared data when HPP changes
+          // FIXED: Critical error boundary - handle TypeError and navigation issues
+          if (menuProvider.errorMessage?.contains('TypeError') == true ||
+              hppProvider.errorMessage?.contains('TypeError') == true ||
+              menuProvider.errorMessage
+                      ?.contains('Error loading ingredient data') ==
+                  true) {
+            return _buildCriticalErrorState(menuProvider, hppProvider);
+          }
+
+          // FIXED: Safe data flow - prevent crashes during provider communication
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            menuProvider.updateSharedData(hppProvider.data);
+            try {
+              if (hppProvider.data.variableCosts.isNotEmpty) {
+                menuProvider.updateSharedData(hppProvider.data);
+              } else {
+                print('⚠️ HPP data is empty, skipping menu provider update');
+              }
+            } catch (e) {
+              print('❌ Error updating shared data: $e');
+              menuProvider._setError(
+                  'Unable to load ingredient data. Please check HPP Calculator first.');
+            }
           });
+
+          // FIXED: Pre-flight check for required data
+          if (hppProvider.data.variableCosts.isEmpty) {
+            return _buildEmptyDataState();
+          }
 
           if (menuProvider.isLoading) {
             return const LoadingWidget(message: 'Menghitung menu...');
@@ -56,7 +90,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             child: Column(
               children: [
-                // Error Message
+                // Error Message with enhanced handling
                 if (menuProvider.errorMessage != null)
                   _buildErrorMessage(menuProvider),
 
@@ -65,7 +99,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
 
                 const SizedBox(height: AppConstants.defaultPadding),
 
-                // Menu Input Widget with Provider
+                // Menu Input Widget
                 Consumer<MenuProvider>(
                   builder: (context, provider, child) {
                     return MenuInputWidget(
@@ -86,9 +120,44 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
 
                 const SizedBox(height: AppConstants.defaultPadding),
 
-                // Ingredient Selector Widget
+                // FIXED: Safe Ingredient Selector Widget with validation
                 Consumer<MenuProvider>(
                   builder: (context, provider, child) {
+                    // FIXED: Validate available ingredients before rendering
+                    if (provider.availableIngredients.isEmpty) {
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.warning_amber,
+                                  size: 48, color: Colors.orange),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'No ingredients available',
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Please add ingredient data in HPP Calculator first.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.arrow_back),
+                                label: const Text('Back to HPP'),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
                     return MenuIngredientSelectorWidget(
                       availableIngredients: provider.availableIngredients,
                       onAddIngredient:
@@ -181,11 +250,35 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
+  // FIXED: Enhanced AppBar with explicit back button and error clearing
   AppBar _buildAppBar() {
     return AppBar(
       title: const Text('Menu Calculator'),
       backgroundColor: AppColors.primary,
       foregroundColor: AppColors.onPrimary,
+      // FIXED: Explicit leading button with error clearing
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () {
+          // Clear any errors before navigation to prevent state issues
+          try {
+            final menuProvider =
+                Provider.of<MenuProvider>(context, listen: false);
+            final hppProvider =
+                Provider.of<HPPProvider>(context, listen: false);
+
+            menuProvider.clearError();
+            hppProvider.clearError();
+
+            Navigator.of(context).pop();
+          } catch (e) {
+            print('❌ Error during navigation: $e');
+            Navigator.of(context)
+                .pop(); // Force navigation even if error clearing fails
+          }
+        },
+        tooltip: 'Back to previous screen',
+      ),
       actions: [
         Consumer<MenuProvider>(
           builder: (context, provider, child) {
@@ -238,6 +331,97 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  // FIXED: Add critical error state handler
+  Widget _buildCriticalErrorState(
+      MenuProvider menuProvider, HPPProvider hppProvider) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: AppColors.error),
+            const SizedBox(height: 16),
+            const Text(
+              'Menu Calculator Error',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Error: ${menuProvider.errorMessage ?? hppProvider.errorMessage ?? "Unknown error"}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    menuProvider.clearError();
+                    hppProvider.clearError();
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Back to HPP'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    menuProvider.clearError();
+                    hppProvider.clearError();
+                    menuProvider.resetCurrentMenu();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reset & Retry'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // FIXED: Add empty data state handler
+  Widget _buildEmptyDataState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.inventory_2_outlined,
+                size: 64, color: Colors.orange),
+            const SizedBox(height: 16),
+            const Text(
+              'No Ingredient Data',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please add ingredient data in HPP Calculator first.\n\nMenu Calculator needs ingredient data to calculate menu costs.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to HPP Calculator'),
+              style:
+                  ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
