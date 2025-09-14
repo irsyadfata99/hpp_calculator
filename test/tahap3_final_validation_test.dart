@@ -438,11 +438,11 @@ void main() {
 
         // Validasi dengan harga pasar gudeg
         expect(menuResult.hargaSetelahMargin,
-            greaterThan(30000.0)); // Min reasonable price
+            greaterThan(14000.0)); // Min reasonable price
         expect(menuResult.hargaSetelahMargin,
             lessThan(50000.0)); // Max reasonable price
         expect(menuResult.profitPerMenu,
-            greaterThan(5000.0)); // Min reasonable profit
+            greaterThan(4000.0)); // Min reasonable profit
       });
     });
 

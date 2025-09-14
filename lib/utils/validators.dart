@@ -1,4 +1,4 @@
-// lib/utils/validators.dart - TAHAP 3 IMPROVED VERSION
+// lib/utils/validators.dart - TAHAP 3 IMPROVED VERSION - FIXED
 import 'constants.dart';
 
 class InputValidator {
@@ -54,7 +54,7 @@ class InputValidator {
     return null;
   }
 
-  /// Validate salary dengan UMR Indonesia context
+  /// FIXED: Validate salary dengan UMR Indonesia context
   static String? validateSalary(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Gaji tidak boleh kosong';
@@ -68,14 +68,31 @@ class InputValidator {
       return 'Gaji harus berupa angka yang valid';
     }
 
+    // FIXED: Use direct double validation
+    return validateSalaryDirect(salary);
+  }
+
+  /// FIXED: Direct double validation untuk salary - menghindari string conversion issues
+  static String? validateSalaryDirect(double salary) {
+    // Debug logging untuk troubleshooting
+    print('🔍 Salary validation debug:');
+    print('  Salary value: $salary');
+    print('  Min salary: ${AppConstants.minSalary}');
+    print('  Max salary: ${AppConstants.maxSalary}');
+    print('  Is below min: ${salary < AppConstants.minSalary}');
+    print('  Is above max: ${salary > AppConstants.maxSalary}');
+
     if (salary < AppConstants.minSalary) {
+      print('  ❌ Rejected: Below minimum');
       return AppConstants.errorLowSalary;
     }
 
     if (salary > AppConstants.maxSalary) {
+      print('  ❌ Rejected: Above maximum');
       return AppConstants.errorHighSalary;
     }
 
+    print('  ✅ Accepted: Valid salary');
     return null;
   }
 

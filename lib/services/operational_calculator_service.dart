@@ -82,8 +82,8 @@ class OperationalCalculatorService {
       // FIXED: Explicit double conversion
       double gaji = k.gajiBulanan.toDouble();
 
-      // Validate salary using integrated validator
-      final salaryValidation = InputValidator.validateSalary(gaji.toString());
+      // FIXED: Use direct salary validation instead of string conversion
+      final salaryValidation = InputValidator.validateSalaryDirect(gaji);
       if (salaryValidation != null) {
         debugPrint(
             'Warning: Gaji karyawan ${k.namaKaryawan} tidak valid: $salaryValidation');
@@ -242,8 +242,8 @@ class OperationalCalculatorService {
       debugPrint('  porsi: $porsi (${porsi.runtimeType})');
       debugPrint('  produksi: $produksi (${produksi.runtimeType})');
 
-      // Validasi karyawan data
-      final karyawanValidation = _validateKaryawanData(karyawan);
+      // FIXED: Validasi karyawan data dengan direct validation
+      final karyawanValidation = _validateKaryawanDataFixed(karyawan);
       if (!karyawanValidation.isValid) {
         debugPrint(
             '❌ Karyawan validation failed: ${karyawanValidation.errorMessage}');
@@ -306,8 +306,8 @@ class OperationalCalculatorService {
     }
   }
 
-  /// Validasi comprehensive data karyawan
-  static OperationalCalculationResult _validateKaryawanData(
+  /// FIXED: Validasi comprehensive data karyawan dengan direct double validation
+  static OperationalCalculationResult _validateKaryawanDataFixed(
       List<KaryawanData> karyawan) {
     // Karyawan boleh kosong, tapi kalau ada harus valid
     for (int i = 0; i < karyawan.length; i++) {
@@ -327,15 +327,19 @@ class OperationalCalculatorService {
             'Jabatan karyawan "${k.namaKaryawan}": $jabatanValidation');
       }
 
-      // Validasi gaji dengan explicit conversion
+      // FIXED: Use direct double validation instead of string conversion
       double gaji = k.gajiBulanan.toDouble();
-      final salaryValidation = InputValidator.validateSalary(gaji.toString());
+
+      debugPrint('🔍 Validating salary for ${k.namaKaryawan}: $gaji');
+
+      // FIXED: Use direct salary validation to avoid string conversion issues
+      final salaryValidation = InputValidator.validateSalaryDirect(gaji);
       if (salaryValidation != null) {
         return OperationalCalculationResult.error(
             'Gaji karyawan "${k.namaKaryawan}": $salaryValidation');
       }
 
-      // Check reasonable salary range
+      // Check reasonable salary range (basic validation)
       if (gaji < 100000) {
         return OperationalCalculationResult.error(
             'Gaji karyawan "${k.namaKaryawan}" terlalu rendah (minimal Rp 100.000)');
@@ -542,9 +546,9 @@ class OperationalCalculatorService {
       final namaValid = InputValidator.validateName(k.namaKaryawan) == null;
       final jabatanValid = InputValidator.validateName(k.jabatan) == null;
 
-      // FIXED: Explicit double conversion for validation
+      // FIXED: Use direct double validation for salary
       double gaji = k.gajiBulanan.toDouble();
-      final gajiValid = InputValidator.validateSalary(gaji.toString()) == null;
+      final gajiValid = InputValidator.validateSalaryDirect(gaji) == null;
 
       return namaValid && jabatanValid && gajiValid;
     });

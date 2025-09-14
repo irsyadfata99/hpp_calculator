@@ -163,7 +163,7 @@ class MenuCalculatorService {
       if (totalBiayaBahanBaku > 0) {
         // Proporsi fixed cost berdasarkan kompleksitas resep
         double proporsi = biayaBahanBakuMenu / totalBiayaBahanBaku;
-        biayaFixedPerMenu = sharedData.biayaFixedPerPorsi * proporsi;
+        biayaFixedPerMenu = sharedData.biayaFixedPerPorsi * proporsi * 1.5;
       }
 
       // 3. Hitung proporsi operational cost untuk menu ini
