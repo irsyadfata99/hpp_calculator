@@ -1,11 +1,10 @@
-// File: lib/widgets/menu_composition_list_widget.dart
+// lib/widgets/menu/menu_composition_list_widget.dart - Separate Widget File
 
 import 'package:flutter/material.dart';
-import '../../models/menu_model.dart';
-import '../../services/menu_calculator_service.dart';
+import '../../services/universal_unit_service.dart';
 
 class MenuCompositionListWidget extends StatelessWidget {
-  final List<MenuComposition> komposisiMenu;
+  final List<dynamic> komposisiMenu; // Accept dynamic to handle different types
   final Function(int) onRemoveItem;
 
   const MenuCompositionListWidget({
@@ -18,37 +17,27 @@ class MenuCompositionListWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Card untuk List Komposisi
-        _buildCompositionListCard(),
-
-        const SizedBox(height: 16),
-
-        // Card untuk Total Bahan Baku (terpisah)
-        if (komposisiMenu.isNotEmpty) _buildTotalBahanBakuCard(),
-      ],
-    );
-  }
-
-  Widget _buildCompositionListCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            _buildHeader(),
-
-            const SizedBox(height: 16),
-
-            // List Komposisi atau Empty State
-            if (komposisiMenu.isEmpty)
-              _buildEmptyState()
-            else
-              _buildCompositionList(),
-          ],
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 16),
+                if (komposisiMenu.isEmpty)
+                  _buildEmptyState()
+                else
+                  _buildCompositionList(),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (komposisiMenu.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildTotalCard(),
+        ],
+      ],
     );
   }
 
@@ -70,7 +59,7 @@ class MenuCompositionListWidget extends StatelessWidget {
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
-            'Komposisi Saat Ini',
+            'Current Composition',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -78,7 +67,6 @@ class MenuCompositionListWidget extends StatelessWidget {
             ),
           ),
         ),
-        // Badge jumlah item
         if (komposisiMenu.isNotEmpty)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -113,19 +101,8 @@ class MenuCompositionListWidget extends StatelessWidget {
             Icon(Icons.restaurant, color: Colors.grey, size: 48),
             SizedBox(height: 8),
             Text(
-              'Belum ada bahan yang ditambahkan',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Gunakan form di atas untuk menambah bahan',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
-              ),
+              'No ingredients added yet',
+              style: TextStyle(color: Colors.grey, fontSize: 14),
             ),
           ],
         ),
@@ -133,106 +110,116 @@ class MenuCompositionListWidget extends StatelessWidget {
     );
   }
 
+  // FIXED: List with proper constraints
   Widget _buildCompositionList() {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: komposisiMenu.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        return _buildCompositionItem(komposisiMenu[index], index);
-      },
-    );
-  }
-
-  Widget _buildCompositionItem(MenuComposition item, int index) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.purple[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.purple[200]!),
-      ),
-      child: Row(
-        children: [
-          // Icon Ingredient
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.purple[100],
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              _getIngredientIcon(item.namaIngredient),
-              color: Colors.purple[700],
-              size: 20,
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // Info Ingredient
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.namaIngredient,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      '${item.jumlahDipakai} ${item.satuan}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '× ${MenuCalculatorService.formatRupiah(item.hargaPerSatuan)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  MenuCalculatorService.formatRupiah(item.totalCost),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.purple[700],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Delete Button
-          IconButton(
-            onPressed: () => onRemoveItem(index),
-            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.red[50],
-              padding: const EdgeInsets.all(8),
-            ),
-          ),
-        ],
+      constraints:
+          const BoxConstraints(maxHeight: 400), // Prevent infinite height
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: komposisiMenu.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          return _buildCompositionItem(komposisiMenu[index], index);
+        },
       ),
     );
   }
 
-  Widget _buildTotalBahanBakuCard() {
-    double total = komposisiMenu.fold(0.0, (sum, item) => sum + item.totalCost);
+  Widget _buildCompositionItem(dynamic item, int index) {
+    try {
+      // FIXED: Safe property access with fallbacks
+      String namaIngredient =
+          _getItemProperty(item, 'namaIngredient') ?? 'Unknown';
+      double jumlahDipakai = _getNumericProperty(item, 'jumlahDipakai') ?? 0.0;
+      String satuan = _getItemProperty(item, 'satuan') ?? 'unit';
+      double hargaPerSatuan =
+          _getNumericProperty(item, 'hargaPerSatuan') ?? 0.0;
+      double totalCost = _getNumericProperty(item, 'totalCost') ??
+          (jumlahDipakai * hargaPerSatuan);
+
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.purple[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.purple[200]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.purple[100],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(
+                Icons.restaurant,
+                color: Colors.purple[700],
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    namaIngredient,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$jumlahDipakai $satuan × ${UniversalUnitService.formatRupiah(hargaPerSatuan)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    UniversalUnitService.formatRupiah(totalCost),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.purple[700],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => onRemoveItem(index),
+              icon:
+                  const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.red[50],
+                padding: const EdgeInsets.all(8),
+              ),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Error rendering composition item: $e');
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red[200]!),
+        ),
+        child: const Text('Error rendering item'),
+      );
+    }
+  }
+
+  Widget _buildTotalCard() {
+    double total = _calculateTotal();
 
     return Card(
       color: Colors.purple[50],
@@ -245,7 +232,7 @@ class MenuCompositionListWidget extends StatelessWidget {
                 Icon(Icons.calculate, color: Colors.purple[700], size: 20),
                 const SizedBox(width: 8),
                 const Text(
-                  'Total Bahan Baku',
+                  'Total Ingredients Cost',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -264,7 +251,7 @@ class MenuCompositionListWidget extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    MenuCalculatorService.formatRupiah(total),
+                    UniversalUnitService.formatRupiah(total),
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -273,7 +260,7 @@ class MenuCompositionListWidget extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Dari ${komposisiMenu.length} bahan',
+                    'From ${komposisiMenu.length} ingredients',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.white.withValues(alpha: 0.8),
@@ -288,27 +275,72 @@ class MenuCompositionListWidget extends StatelessWidget {
     );
   }
 
-  IconData _getIngredientIcon(String namaIngredient) {
-    String nama = namaIngredient.toLowerCase();
+  // FIXED: Safe property getters
+  String? _getItemProperty(dynamic item, String property) {
+    try {
+      if (item is Map<String, dynamic>) {
+        return item[property]?.toString();
+      }
+      // Handle object properties using reflection-like access
+      switch (property) {
+        case 'namaIngredient':
+          return item?.namaIngredient?.toString();
+        case 'satuan':
+          return item?.satuan?.toString();
+        default:
+          return null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
 
-    if (nama.contains('beras') || nama.contains('nasi')) {
-      return Icons.rice_bowl;
-    } else if (nama.contains('ayam') || nama.contains('daging')) {
-      return Icons.set_meal;
-    } else if (nama.contains('sayur') ||
-        nama.contains('kangkung') ||
-        nama.contains('bayam')) {
-      return Icons.eco;
-    } else if (nama.contains('bumbu') ||
-        nama.contains('rempah') ||
-        nama.contains('garam')) {
-      return Icons.scatter_plot;
-    } else if (nama.contains('minyak') || nama.contains('santan')) {
-      return Icons.opacity;
-    } else if (nama.contains('telur')) {
-      return Icons.egg;
-    } else {
-      return Icons.restaurant;
+  double? _getNumericProperty(dynamic item, String property) {
+    try {
+      if (item is Map<String, dynamic>) {
+        var value = item[property];
+        if (value is num) return value.toDouble();
+        if (value is String) return double.tryParse(value);
+        return null;
+      }
+      // Handle object properties
+      switch (property) {
+        case 'jumlahDipakai':
+          var value = item?.jumlahDipakai;
+          return value is num ? value.toDouble() : null;
+        case 'hargaPerSatuan':
+          var value = item?.hargaPerSatuan;
+          return value is num ? value.toDouble() : null;
+        case 'totalCost':
+          var value = item?.totalCost;
+          return value is num ? value.toDouble() : null;
+        default:
+          return null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  double _calculateTotal() {
+    try {
+      return komposisiMenu.fold(0.0, (sum, item) {
+        double? cost = _getNumericProperty(item, 'totalCost');
+        if (cost == null) {
+          // Calculate from jumlah * harga if totalCost not available
+          double? jumlah = _getNumericProperty(item, 'jumlahDipakai');
+          double? harga = _getNumericProperty(item, 'hargaPerSatuan');
+          if (jumlah != null && harga != null) {
+            cost = jumlah * harga;
+          } else {
+            cost = 0.0;
+          }
+        }
+        return sum + cost;
+      });
+    } catch (e) {
+      debugPrint('❌ Error calculating total: $e');
+      return 0.0;
     }
   }
 }

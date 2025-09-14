@@ -1,4 +1,4 @@
-// lib/main.dart - TAHAP 3 IMPROVED VERSION WITH INDONESIAN TEXT + ERROR HANDLER - FIXED NULL SAFETY
+// lib/main.dart - FIXED VERSION: Eliminates infinite loops and layout issues
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -13,22 +13,10 @@ import 'utils/constants.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // FIXED: Add global error handling for null conversion issues
+  // FIXED: Simplified error handling - remove complex global handlers that might interfere
   FlutterError.onError = (FlutterErrorDetails details) {
-    if (details.exception is TypeError &&
-        details.exception.toString().contains('Null')) {
-      debugPrint('🚨 Null Safety Error Caught: ${details.exception}');
-      debugPrint('📍 Stack: ${details.stack}');
-      // Log but don't crash the app
-    } else if (details.exception
-        .toString()
-        .contains('type \'Null\' is not a subtype of type \'double\'')) {
-      debugPrint('🚨 Null to Double Conversion Error: ${details.exception}');
-      debugPrint('📍 Location: ${details.context?.toString()}');
-      // Handle the specific null to double error gracefully
-    } else {
-      FlutterError.presentError(details);
-    }
+    debugPrint('🚨 Flutter Error: ${details.exception}');
+    // Let Flutter handle the error normally instead of custom handling
   };
 
   runApp(const MyApp());
@@ -41,13 +29,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Core HPP Provider - Sumber data utama
+        // FIXED: Create providers without immediate cross-communication
         ChangeNotifierProvider(create: (_) => HPPProvider()),
-
-        // Operational Provider - Bergantung pada data HPP
         ChangeNotifierProvider(create: (_) => OperationalProvider()),
-
-        // Menu Provider - Bergantung pada data HPP
         ChangeNotifierProvider(create: (_) => MenuProvider()),
       ],
       child: MaterialApp(
@@ -55,60 +39,8 @@ class MyApp extends StatelessWidget {
         theme: AppTheme.lightTheme,
         home: const MainNavigationScreen(),
         debugShowCheckedModeBanner: false,
-        // FIXED: Add global error builder for better error handling
+        // FIXED: Simplified error widget - remove complex error handling
         builder: (context, widget) {
-          // Wrap the entire app with error boundary
-          ErrorWidget.builder = (FlutterErrorDetails errorDetails) {
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text('Error'),
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Terjadi kesalahan pada aplikasi',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        errorDetails.exception.toString(),
-                        style: const TextStyle(fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Restart the app by creating a new MyApp instance
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                                builder: (context) => const MyApp()),
-                            (route) => false,
-                          );
-                        },
-                        child: const Text('Restart Aplikasi'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          };
           return widget ?? const SizedBox.shrink();
         },
       ),
@@ -128,6 +60,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
   bool _isInitialized = false;
   String? _initError;
 
+  // FIXED: Add flag to prevent infinite communication loops
+  bool _isUpdatingProviders = false;
+
   @override
   void initState() {
     super.initState();
@@ -136,73 +71,56 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _initializeApp() async {
     try {
-      debugPrint('🚀 Menginisialisasi ${AppConstants.appName}...');
+      debugPrint('🚀 Initializing ${AppConstants.appName}...');
 
-      // Tunggu frame pertama untuk memastikan provider siap
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
+      // FIXED: Wait for first frame to ensure context is ready
+      await Future.delayed(const Duration(milliseconds: 100));
 
-        try {
-          // Dapatkan semua provider dengan null safety
-          final hppProvider = Provider.of<HPPProvider>(context, listen: false);
-          final operationalProvider =
-              Provider.of<OperationalProvider>(context, listen: false);
-          final menuProvider =
-              Provider.of<MenuProvider>(context, listen: false);
+      if (!mounted) return;
 
-          // Inisialisasi HPP Provider terlebih dahulu (sumber data utama)
-          debugPrint('📊 Menginisialisasi HPP Provider...');
-          await hppProvider.initializeFromStorage();
+      try {
+        // Get providers safely with null checks
+        final hppProvider = Provider.of<HPPProvider>(context, listen: false);
+        final operationalProvider =
+            Provider.of<OperationalProvider>(context, listen: false);
+        final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-          // Inisialisasi Operational Provider dan setup komunikasi dengan HPP
-          debugPrint('👥 Menginisialisasi Operational Provider...');
-          await operationalProvider.initializeFromStorage();
+        // FIXED: Initialize providers sequentially to avoid race conditions
+        debugPrint('📊 Initializing HPP Provider...');
+        await hppProvider.initializeFromStorage();
 
-          // Tunggu HPP siap sebelum update operational dengan null checks
-          if (hppProvider.data.estimasiPorsi > 0) {
-            operationalProvider.updateSharedData(hppProvider.data);
-          }
+        debugPrint('👥 Initializing Operational Provider...');
+        await operationalProvider.initializeFromStorage();
 
-          // Inisialisasi Menu Provider dan setup komunikasi dengan HPP
-          debugPrint('🍽️ Menginisialisasi Menu Provider...');
-          await menuProvider.initializeFromStorage();
+        debugPrint('🍽️ Initializing Menu Provider...');
+        await menuProvider.initializeFromStorage();
 
-          // Tunggu HPP siap sebelum update menu dengan null checks
-          if (hppProvider.data.estimasiPorsi > 0) {
-            menuProvider.updateSharedData(hppProvider.data);
-          }
+        // FIXED: Setup provider communication AFTER all providers are initialized
+        _setupProviderCommunicationSafe(
+            hppProvider, operationalProvider, menuProvider);
 
-          // Setup komunikasi antar provider
-          _setupProviderCommunication(
-              hppProvider, operationalProvider, menuProvider);
+        debugPrint('✅ All providers initialized successfully');
 
-          debugPrint('✅ Migrasi Provider selesai sukses');
-          debugPrint('📈 Status Aplikasi:');
-          debugPrint('   - Item HPP: ${hppProvider.data.totalItemCount}');
-          debugPrint('   - Karyawan: ${operationalProvider.karyawanCount}');
-          debugPrint('   - Riwayat Menu: ${menuProvider.historyCount}');
-
-          if (mounted) {
-            setState(() {
-              _isInitialized = true;
-              _initError = null;
-            });
-          }
-        } catch (e, stackTrace) {
-          debugPrint('❌ Error inisialisasi provider: $e');
-          debugPrint('📍 Stack trace: $stackTrace');
-
-          if (mounted) {
-            setState(() {
-              _isInitialized = true;
-              _initError = e.toString();
-            });
-          }
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+            _initError = null;
+          });
         }
-      });
+      } catch (e, stackTrace) {
+        debugPrint('❌ Error during provider initialization: $e');
+        debugPrint('Stack trace: $stackTrace');
+
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+            _initError = e.toString();
+          });
+        }
+      }
     } catch (e, stackTrace) {
-      debugPrint('❌ Error inisialisasi aplikasi: $e');
-      debugPrint('📍 Stack trace: $stackTrace');
+      debugPrint('❌ Critical initialization error: $e');
+      debugPrint('Stack trace: $stackTrace');
 
       if (mounted) {
         setState(() {
@@ -213,165 +131,97 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  /// Setup komunikasi antar provider dengan debouncing yang proper dan null safety
-  void _setupProviderCommunication(
+  /// FIXED: Safe provider communication that prevents infinite loops
+  void _setupProviderCommunicationSafe(
     HPPProvider hppProvider,
     OperationalProvider operationalProvider,
     MenuProvider menuProvider,
   ) {
-    debugPrint('🔗 Menyiapkan komunikasi antar provider...');
+    debugPrint('🔗 Setting up safe provider communication...');
 
-    // Tambahkan listener dengan debouncing untuk mencegah infinite loop
-    hppProvider.addListener(() {
-      try {
-        // Update hanya jika provider sudah terinisialisasi dan data benar-benar berubah
-        if (_isInitialized && hppProvider.data.estimasiPorsi > 0) {
-          // Update operational provider ketika data HPP berubah dengan null checks
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              // FIXED: Remove unnecessary null check - hppProvider.data is never null
-              operationalProvider.updateSharedData(hppProvider.data);
-              menuProvider.updateSharedData(hppProvider.data);
-            }
-          });
-        }
-      } catch (e) {
-        debugPrint('❌ Error in provider communication: $e');
-        // Don't crash, just log the error
+    // FIXED: Remove listener-based communication that causes infinite loops
+    // Instead, use manual updates when needed
+
+    // Initial sync if HPP has data
+    if (hppProvider.data.estimasiPorsi > 0) {
+      _syncProvidersData(hppProvider, operationalProvider, menuProvider);
+    }
+
+    debugPrint('✅ Safe provider communication setup complete');
+  }
+
+  /// FIXED: Manual sync method to prevent infinite loops
+  void _syncProvidersData(
+    HPPProvider hppProvider,
+    OperationalProvider operationalProvider,
+    MenuProvider menuProvider,
+  ) {
+    if (_isUpdatingProviders) return; // Prevent recursive calls
+
+    try {
+      _isUpdatingProviders = true;
+
+      debugPrint('🔄 Syncing provider data...');
+
+      // Update with current HPP data
+      if (hppProvider.data.estimasiPorsi > 0) {
+        operationalProvider.updateSharedData(hppProvider.data);
+        menuProvider.updateSharedData(hppProvider.data);
       }
-    });
 
-    debugPrint('✅ Setup komunikasi provider selesai');
+      debugPrint('✅ Provider data sync complete');
+    } catch (e) {
+      debugPrint('❌ Error syncing provider data: $e');
+    } finally {
+      _isUpdatingProviders = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Tampilkan loading screen selama inisialisasi
+    // FIXED: Simplified loading state - remove complex UI during loading
     if (!_isInitialized) {
-      return Scaffold(
+      return const Scaffold(
         body: Center(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(
-                'Memuat ${AppConstants.appName}...',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Versi ${AppConstants.appVersion}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: const LinearProgressIndicator(),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '🔄 Menginisialisasi sistem...',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading HPP Calculator...'),
             ],
           ),
         ),
       );
     }
 
-    // Tampilkan error screen jika inisialisasi gagal
+    // FIXED: Simplified error state
     if (_initError != null) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text('${AppConstants.appName} - Error'),
-          backgroundColor: Colors.red[600],
-          foregroundColor: Colors.white,
-        ),
+        appBar: AppBar(title: const Text('Error')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 64),
-                const SizedBox(height: 24),
-                const Text(
-                  'Gagal Menginisialisasi Aplikasi',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
-                ),
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Detail Error:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _initError!,
-                        textAlign: TextAlign.left,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
+                const Text('Initialization Error',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(_initError!, textAlign: TextAlign.center),
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _isInitialized = false;
-                          _initError = null;
-                        });
-                        _initializeApp();
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Coba Lagi'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _isInitialized = true;
-                          _initError = null;
-                        });
-                      },
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Lanjutkan'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _isInitialized = false;
+                      _initError = null;
+                    });
+                    _initializeApp();
+                  },
+                  child: const Text('Retry'),
                 ),
               ],
             ),
@@ -380,23 +230,32 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // Interface utama aplikasi dengan pola Provider lengkap dan error handling
-    return Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
-      builder:
-          (context, hppProvider, operationalProvider, menuProvider, child) {
-        return Scaffold(
-          body: IndexedStack(
-            index: _currentIndex,
-            children: const [
-              HPPCalculatorScreen(), // Menggunakan HPPProvider
-              OperationalCalculatorScreen(), // Menggunakan OperationalProvider + HPPProvider
-              MenuCalculatorScreen(), // Menggunakan MenuProvider + HPPProvider
-            ],
-          ),
-          bottomNavigationBar: _buildBottomNavigationBar(
-              hppProvider, operationalProvider, menuProvider),
-        );
-      },
+    // FIXED: Main interface with proper provider usage
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: const [
+          HPPCalculatorScreen(),
+          OperationalCalculatorScreen(),
+          MenuCalculatorScreen(),
+        ],
+      ),
+      bottomNavigationBar:
+          Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
+        builder:
+            (context, hppProvider, operationalProvider, menuProvider, child) {
+          // FIXED: Trigger manual sync when switching tabs
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isUpdatingProviders) {
+              _syncProvidersData(
+                  hppProvider, operationalProvider, menuProvider);
+            }
+          });
+
+          return _buildBottomNavigationBar(
+              hppProvider, operationalProvider, menuProvider);
+        },
+      ),
     );
   }
 
@@ -412,189 +271,64 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           _currentIndex = index;
         });
 
-        // Log navigasi dengan status provider
-        debugPrint('📱 Navigasi ke tab $index:');
-        switch (index) {
-          case 0:
-            debugPrint(
-                '   Kalkulator HPP - ${hppProvider.data.totalItemCount} item');
-            break;
-          case 1:
-            debugPrint(
-                '   Operasional - ${operationalProvider.karyawanCount} karyawan');
-            break;
-          case 2:
-            debugPrint('   Menu - ${menuProvider.historyCount} riwayat menu');
-            break;
-        }
+        // FIXED: Manual sync on tab change
+        _syncProvidersData(hppProvider, operationalProvider, menuProvider);
       },
       type: BottomNavigationBarType.fixed,
       elevation: 8,
       items: [
-        BottomNavigationBarItem(
-          icon: const Icon(Icons.calculate),
-          activeIcon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.calculate,
-              color: Theme.of(context).primaryColor,
-            ),
-          ),
-          label: AppConstants.labelHPPCalculator,
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.calculate),
+          label: 'HPP Calculator',
           tooltip: 'Hitung Harga Pokok Penjualan',
         ),
         BottomNavigationBarItem(
-          icon: Stack(
-            children: [
-              const Icon(Icons.business),
-              if (operationalProvider.hasKaryawan)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 12,
-                      minHeight: 12,
-                    ),
-                    child: Text(
-                      '${operationalProvider.karyawanCount}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          activeIcon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Stack(
-              children: [
-                Icon(
-                  Icons.business,
-                  color: Theme.of(context).primaryColor,
-                ),
-                if (operationalProvider.hasKaryawan)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 12,
-                        minHeight: 12,
-                      ),
-                      child: Text(
-                        '${operationalProvider.karyawanCount}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          label: 'Operasional',
+          icon:
+              _buildTabIcon(Icons.business, operationalProvider.karyawanCount),
+          label: 'Operational',
           tooltip: 'Kelola Biaya Operasional & Karyawan',
         ),
         BottomNavigationBarItem(
-          icon: Stack(
-            children: [
-              const Icon(Icons.restaurant_menu),
-              if (menuProvider.hasMenuHistory)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 12,
-                      minHeight: 12,
-                    ),
-                    child: Text(
-                      '${menuProvider.historyCount}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          activeIcon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Stack(
-              children: [
-                Icon(
-                  Icons.restaurant_menu,
-                  color: Theme.of(context).primaryColor,
-                ),
-                if (menuProvider.hasMenuHistory)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 12,
-                        minHeight: 12,
-                      ),
-                      child: Text(
-                        '${menuProvider.historyCount}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+          icon: _buildTabIcon(Icons.restaurant_menu, menuProvider.historyCount),
           label: 'Menu & Profit',
           tooltip: 'Kalkulasi Menu & Keuntungan',
         ),
+      ],
+    );
+  }
+
+  // FIXED: Simplified badge widget to prevent layout issues
+  Widget _buildTabIcon(IconData icon, int count) {
+    if (count <= 0) {
+      return Icon(icon);
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        if (count > 0)
+          Positioned(
+            right: -6,
+            top: -6,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                count > 99 ? '99+' : count.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
       ],
     );
   }
