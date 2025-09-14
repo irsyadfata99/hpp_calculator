@@ -1,4 +1,4 @@
-// lib/services/storage_service.dart - CLEANED VERSION: NO EXPORT/IMPORT
+// lib/services/storage_service.dart - FIXED NULL SAFETY VERSION
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,11 +9,11 @@ import '../utils/constants.dart';
 import '../utils/validators.dart';
 
 class StorageService {
-  // Using constants from AppConstants instead of local constants
+  // Using constants from AppConstants
   static const String _keySharedData = AppConstants.keySharedData;
   static const String _keyMenuHistory = AppConstants.keyMenuHistory;
 
-  // Maximum history items using validation approach
+  // Maximum history items
   static const int _maxHistoryItems = 20;
 
   // Auto-save debounce tracker
@@ -31,13 +31,24 @@ class StorageService {
         return false;
       }
 
+      // FIXED: Enhanced JSON serialization with null safety
       final jsonData = {
-        'version': AppConstants.appVersion, // Using constant
-        'variableCosts': data.variableCosts,
-        'fixedCosts': data.fixedCosts,
-        'estimasiPorsi': data.estimasiPorsi,
-        'estimasiProduksiBulanan': data.estimasiProduksiBulanan,
-        'karyawan': data.karyawan.map((k) => k.toMap()).toList(),
+        'version': AppConstants.appVersion,
+        'variableCosts': _sanitizeVariableCosts(data.variableCosts),
+        'fixedCosts': _sanitizeFixedCosts(data.fixedCosts),
+        'estimasiPorsi': _ensureFiniteDouble(
+            data.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
+        'estimasiProduksiBulanan': _ensureFiniteDouble(
+            data.estimasiProduksiBulanan, AppConstants.defaultEstimasiProduksi),
+        'hppMurniPerPorsi': _ensureFiniteDouble(data.hppMurniPerPorsi, 0.0),
+        'biayaVariablePerPorsi':
+            _ensureFiniteDouble(data.biayaVariablePerPorsi, 0.0),
+        'biayaFixedPerPorsi': _ensureFiniteDouble(data.biayaFixedPerPorsi, 0.0),
+        'totalOperationalCost':
+            _ensureFiniteDouble(data.totalOperationalCost, 0.0),
+        'totalHargaSetelahOperational':
+            _ensureFiniteDouble(data.totalHargaSetelahOperational, 0.0),
+        'karyawan': _sanitizeKaryawanList(data.karyawan),
         'lastUpdated': DateTime.now().toIso8601String(),
       };
 
@@ -64,7 +75,7 @@ class StorageService {
       final prefs = await SharedPreferences.getInstance();
       final String? jsonString = prefs.getString(_keySharedData);
 
-      if (jsonString == null) return null;
+      if (jsonString == null || jsonString.isEmpty) return null;
 
       final Map<String, dynamic> jsonData = json.decode(jsonString);
 
@@ -75,41 +86,62 @@ class StorageService {
         return null;
       }
 
+      // FIXED: Safe parsing of karyawan data
       List<KaryawanData> karyawan = [];
-      if (jsonData['karyawan'] != null) {
+      if (jsonData['karyawan'] != null && jsonData['karyawan'] is List) {
         try {
-          karyawan = (jsonData['karyawan'] as List)
-              .map((item) => KaryawanData.fromMap(item as Map<String, dynamic>))
-              .toList();
+          for (var item in (jsonData['karyawan'] as List)) {
+            if (item is Map<String, dynamic>) {
+              try {
+                final karyawanItem = KaryawanData.fromMap(item);
+                if (karyawanItem.isValid) {
+                  karyawan.add(karyawanItem);
+                }
+              } catch (e) {
+                developer.log('Error parsing individual karyawan: $e',
+                    name: 'StorageService');
+                // Skip invalid karyawan instead of failing completely
+              }
+            }
+          }
         } catch (e) {
-          developer.log('Error parsing karyawan data: $e',
+          developer.log('Error parsing karyawan list: $e',
               name: 'StorageService');
-          // Continue with empty karyawan list instead of failing completely
+          // Continue with empty karyawan list
         }
       }
 
-      // Use constants for default values
-      final estimasiPorsi = _validateAndClampDouble(
-        jsonData['estimasiPorsi'],
-        AppConstants.defaultEstimasiPorsi,
-        AppConstants.minQuantity,
-        AppConstants.maxQuantity,
-      );
-
-      final estimasiProduksi = _validateAndClampDouble(
-        jsonData['estimasiProduksiBulanan'],
-        AppConstants.defaultEstimasiProduksi,
-        AppConstants.minQuantity,
-        AppConstants.maxQuantity,
-      );
-
       return SharedCalculationData(
-        variableCosts:
-            List<Map<String, dynamic>>.from(jsonData['variableCosts'] ?? []),
-        fixedCosts:
-            List<Map<String, dynamic>>.from(jsonData['fixedCosts'] ?? []),
-        estimasiPorsi: estimasiPorsi,
-        estimasiProduksiBulanan: estimasiProduksi,
+        variableCosts: _parseVariableCosts(jsonData['variableCosts']),
+        fixedCosts: _parseFixedCosts(jsonData['fixedCosts']),
+        estimasiPorsi: _validateAndClampDouble(
+          jsonData['estimasiPorsi'],
+          AppConstants.defaultEstimasiPorsi,
+          AppConstants.minQuantity,
+          AppConstants.maxQuantity,
+        ),
+        estimasiProduksiBulanan: _validateAndClampDouble(
+          jsonData['estimasiProduksiBulanan'],
+          AppConstants.defaultEstimasiProduksi,
+          AppConstants.minQuantity,
+          AppConstants.maxQuantity,
+        ),
+        hppMurniPerPorsi: _validateAndClampDouble(
+            jsonData['hppMurniPerPorsi'], 0.0, 0.0, AppConstants.maxPrice),
+        biayaVariablePerPorsi: _validateAndClampDouble(
+            jsonData['biayaVariablePerPorsi'], 0.0, 0.0, AppConstants.maxPrice),
+        biayaFixedPerPorsi: _validateAndClampDouble(
+            jsonData['biayaFixedPerPorsi'], 0.0, 0.0, AppConstants.maxPrice),
+        totalOperationalCost: _validateAndClampDouble(
+            jsonData['totalOperationalCost'],
+            0.0,
+            0.0,
+            AppConstants.maxPrice * 10),
+        totalHargaSetelahOperational: _validateAndClampDouble(
+            jsonData['totalHargaSetelahOperational'],
+            0.0,
+            0.0,
+            AppConstants.maxPrice),
         karyawan: karyawan,
       );
     } catch (e) {
@@ -139,7 +171,7 @@ class StorageService {
           final existing = json.decode(item);
           return existing['nama_menu'] == menu.namaMenu;
         } catch (e) {
-          return false;
+          return false; // Keep invalid entries for now
         }
       });
 
@@ -217,7 +249,7 @@ class StorageService {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Remove all app-related keys (removed backup key)
+      // Remove all app-related keys
       final keys = [_keySharedData, _keyMenuHistory];
 
       bool success = true;
@@ -275,87 +307,85 @@ class StorageService {
     }
   }
 
-  // PRIVATE VALIDATION METHODS
+  // PRIVATE VALIDATION METHODS - ENHANCED NULL SAFETY
 
-  // Validate SharedCalculationData using integrated validators
+  // FIXED: Enhanced validation with null safety
   static bool _validateSharedData(SharedCalculationData data) {
-    // Validate estimasi porsi
-    final porsiValidation =
-        InputValidator.validateQuantity(data.estimasiPorsi.toString());
-    if (porsiValidation != null) {
-      developer.log('Invalid estimasi porsi: $porsiValidation',
-          name: 'StorageService');
-      return false;
-    }
-
-    // Validate estimasi produksi
-    final produksiValidation = InputValidator.validateQuantity(
-        data.estimasiProduksiBulanan.toString());
-    if (produksiValidation != null) {
-      developer.log('Invalid estimasi produksi: $produksiValidation',
-          name: 'StorageService');
-      return false;
-    }
-
-    // Validate karyawan data
-    for (var karyawan in data.karyawan) {
-      final namaValidation = InputValidator.validateName(karyawan.namaKaryawan);
-      if (namaValidation != null) {
-        developer.log('Invalid karyawan name: $namaValidation',
+    try {
+      // Validate estimasi porsi
+      if (!_isValidDouble(data.estimasiPorsi, AppConstants.minQuantity,
+          AppConstants.maxQuantity)) {
+        developer.log('Invalid estimasi porsi: ${data.estimasiPorsi}',
             name: 'StorageService');
         return false;
       }
 
-      final salaryValidation =
-          InputValidator.validateSalary(karyawan.gajiBulanan.toString());
-      if (salaryValidation != null) {
+      // Validate estimasi produksi
+      if (!_isValidDouble(data.estimasiProduksiBulanan,
+          AppConstants.minQuantity, AppConstants.maxQuantity)) {
         developer.log(
-            'Invalid salary for ${karyawan.namaKaryawan}: $salaryValidation',
+            'Invalid estimasi produksi: ${data.estimasiProduksiBulanan}',
             name: 'StorageService');
         return false;
       }
-    }
 
-    return true;
+      // Validate karyawan data
+      for (var karyawan in data.karyawan) {
+        if (!karyawan.isValid) {
+          developer.log('Invalid karyawan data: ${karyawan.namaKaryawan}',
+              name: 'StorageService');
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      developer.log('Error validating shared data: $e', name: 'StorageService');
+      return false;
+    }
   }
 
   // Validate MenuItem using integrated validators
   static bool _validateMenuItem(MenuItem menu) {
-    final nameValidation = InputValidator.validateName(menu.namaMenu);
-    if (nameValidation != null) {
-      developer.log('Invalid menu name: $nameValidation',
-          name: 'StorageService');
+    try {
+      final nameValidation = InputValidator.validateName(menu.namaMenu);
+      if (nameValidation != null) {
+        developer.log('Invalid menu name: $nameValidation',
+            name: 'StorageService');
+        return false;
+      }
+
+      // Validate menu compositions
+      for (var komposisi in menu.komposisi) {
+        final ingredientValidation =
+            InputValidator.validateName(komposisi.namaIngredient);
+        if (ingredientValidation != null) {
+          developer.log('Invalid ingredient name: $ingredientValidation',
+              name: 'StorageService');
+          return false;
+        }
+
+        if (!_isValidDouble(komposisi.jumlahDipakai, AppConstants.minQuantity,
+            AppConstants.maxQuantity)) {
+          developer.log(
+              'Invalid ingredient quantity: ${komposisi.jumlahDipakai}',
+              name: 'StorageService');
+          return false;
+        }
+
+        if (!_isValidDouble(komposisi.hargaPerSatuan, AppConstants.minPrice,
+            AppConstants.maxPrice)) {
+          developer.log('Invalid ingredient price: ${komposisi.hargaPerSatuan}',
+              name: 'StorageService');
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      developer.log('Error validating menu item: $e', name: 'StorageService');
       return false;
     }
-
-    // Validate menu compositions
-    for (var komposisi in menu.komposisi) {
-      final ingredientValidation =
-          InputValidator.validateName(komposisi.namaIngredient);
-      if (ingredientValidation != null) {
-        developer.log('Invalid ingredient name: $ingredientValidation',
-            name: 'StorageService');
-        return false;
-      }
-
-      final quantityValidation =
-          InputValidator.validateQuantity(komposisi.jumlahDipakai.toString());
-      if (quantityValidation != null) {
-        developer.log('Invalid ingredient quantity: $quantityValidation',
-            name: 'StorageService');
-        return false;
-      }
-
-      final priceValidation =
-          InputValidator.validatePrice(komposisi.hargaPerSatuan.toString());
-      if (priceValidation != null) {
-        developer.log('Invalid ingredient price: $priceValidation',
-            name: 'StorageService');
-        return false;
-      }
-    }
-
-    return true;
   }
 
   // Validate loaded data structure
@@ -377,16 +407,95 @@ class StorageService {
     return true;
   }
 
-  // Validate and clamp double values using constants
+  // FIXED: Enhanced validation and clamping with comprehensive checks
   static double _validateAndClampDouble(
       dynamic value, double defaultValue, double min, double max) {
     if (value == null) return defaultValue;
 
-    double? parsed =
-        value is double ? value : double.tryParse(value.toString());
-    if (parsed == null) return defaultValue;
+    try {
+      double? parsed;
+      if (value is double) {
+        parsed = value;
+      } else if (value is int) {
+        parsed = value.toDouble();
+      } else if (value is String) {
+        if (value.trim().isEmpty) return defaultValue;
+        parsed = double.tryParse(value.trim());
+      }
 
-    // Clamp value within valid range
-    return parsed.clamp(min, max);
+      // FIXED: Additional null and edge case checks
+      if (parsed == null || !parsed.isFinite) {
+        return defaultValue;
+      }
+
+      // Clamp value within valid range
+      return parsed.clamp(min, max);
+    } catch (e) {
+      developer.log('Error validating double: $value -> $e',
+          name: 'StorageService');
+      return defaultValue;
+    }
+  }
+
+  // FIXED: Helper methods for enhanced data sanitization
+
+  static double _ensureFiniteDouble(double value, double defaultValue) {
+    return (value.isFinite && !value.isNaN) ? value : defaultValue;
+  }
+
+  static bool _isValidDouble(double value, double min, double max) {
+    return value.isFinite && !value.isNaN && value >= min && value <= max;
+  }
+
+  static List<Map<String, dynamic>> _sanitizeVariableCosts(
+      List<Map<String, dynamic>> costs) {
+    return costs.map((cost) {
+      return {
+        'nama': cost['nama']?.toString() ?? '',
+        'totalHarga':
+            _ensureFiniteDouble(cost['totalHarga']?.toDouble() ?? 0.0, 0.0),
+        'jumlah': _ensureFiniteDouble(cost['jumlah']?.toDouble() ?? 0.0, 0.0),
+        'satuan': cost['satuan']?.toString() ?? 'unit',
+        'timestamp':
+            cost['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
+      };
+    }).toList();
+  }
+
+  static List<Map<String, dynamic>> _sanitizeFixedCosts(
+      List<Map<String, dynamic>> costs) {
+    return costs.map((cost) {
+      return {
+        'jenis': cost['jenis']?.toString() ?? '',
+        'nominal': _ensureFiniteDouble(cost['nominal']?.toDouble() ?? 0.0, 0.0),
+        'timestamp':
+            cost['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
+      };
+    }).toList();
+  }
+
+  static List<Map<String, dynamic>> _sanitizeKaryawanList(
+      List<KaryawanData> karyawan) {
+    return karyawan.where((k) => k.isValid).map((k) => k.toMap()).toList();
+  }
+
+  static List<Map<String, dynamic>> _parseVariableCosts(dynamic data) {
+    if (data == null || data is! List) return [];
+    try {
+      return (data as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      developer.log('Error parsing variable costs: $e', name: 'StorageService');
+      return [];
+    }
+  }
+
+  static List<Map<String, dynamic>> _parseFixedCosts(dynamic data) {
+    if (data == null || data is! List) return [];
+    try {
+      return (data as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      developer.log('Error parsing fixed costs: $e', name: 'StorageService');
+      return [];
+    }
   }
 }

@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - COMPLETE IMPLEMENTATION (No Export/Import)
+// lib/providers/operational_provider.dart - FIXED NULL SAFETY VERSION
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -7,6 +7,7 @@ import '../services/operational_calculator_service.dart';
 import '../services/storage_service.dart';
 import '../utils/validators.dart';
 import '../utils/formatters.dart';
+import '../utils/constants.dart';
 
 class OperationalProvider with ChangeNotifier {
   List<KaryawanData> _karyawan = [];
@@ -55,54 +56,83 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // SHARED DATA INTEGRATION - FIXED WITH TYPE CONVERSION
+  // SHARED DATA INTEGRATION - FIXED WITH COMPREHENSIVE TYPE SAFETY
   // ===============================================
 
   void updateSharedData(SharedCalculationData newSharedData) {
     debugPrint('🔄 OperationalProvider.updateSharedData called');
 
-    // FIXED: Ensure all numeric values are properly converted to double
-    _sharedData = SharedCalculationData(
-      variableCosts: newSharedData.variableCosts,
-      fixedCosts: newSharedData.fixedCosts,
-      // EXPLICIT DOUBLE CONVERSION - This fixes the type issue
-      estimasiPorsi: _ensureDouble(newSharedData.estimasiPorsi),
-      estimasiProduksiBulanan:
-          _ensureDouble(newSharedData.estimasiProduksiBulanan),
-      hppMurniPerPorsi: _ensureDouble(newSharedData.hppMurniPerPorsi),
-      biayaVariablePerPorsi: _ensureDouble(newSharedData.biayaVariablePerPorsi),
-      biayaFixedPerPorsi: _ensureDouble(newSharedData.biayaFixedPerPorsi),
-      karyawan: _karyawan, // Use local karyawan data
-      totalOperationalCost: _ensureDouble(newSharedData.totalOperationalCost),
-      totalHargaSetelahOperational:
-          _ensureDouble(newSharedData.totalHargaSetelahOperational),
-    );
+    try {
+      // FIXED: Comprehensive null-safe conversion with validation
+      _sharedData = SharedCalculationData(
+        variableCosts: newSharedData.variableCosts,
+        fixedCosts: newSharedData.fixedCosts,
+        // EXPLICIT SAFE CONVERSION - This fixes the type issue
+        estimasiPorsi: _ensureDoubleOrDefault(
+            newSharedData.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
+        estimasiProduksiBulanan: _ensureDoubleOrDefault(
+            newSharedData.estimasiProduksiBulanan,
+            AppConstants.defaultEstimasiProduksi),
+        hppMurniPerPorsi:
+            _ensureDoubleOrDefault(newSharedData.hppMurniPerPorsi, 0.0),
+        biayaVariablePerPorsi:
+            _ensureDoubleOrDefault(newSharedData.biayaVariablePerPorsi, 0.0),
+        biayaFixedPerPorsi:
+            _ensureDoubleOrDefault(newSharedData.biayaFixedPerPorsi, 0.0),
+        karyawan: _karyawan, // Use local karyawan data
+        totalOperationalCost:
+            _ensureDoubleOrDefault(newSharedData.totalOperationalCost, 0.0),
+        totalHargaSetelahOperational: _ensureDoubleOrDefault(
+            newSharedData.totalHargaSetelahOperational, 0.0),
+      );
 
-    debugPrint('📊 Updated shared data values (FIXED TYPES):');
-    debugPrint(
-        '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
-    debugPrint(
-        '  estimasiProduksiBulanan: ${_sharedData!.estimasiProduksiBulanan} (${_sharedData!.estimasiProduksiBulanan.runtimeType})');
-    debugPrint(
-        '  hppMurniPerPorsi: ${_sharedData!.hppMurniPerPorsi} (${_sharedData!.hppMurniPerPorsi.runtimeType})');
-    debugPrint('  karyawan count: ${_karyawan.length}');
+      debugPrint('📊 Updated shared data values (FIXED TYPES):');
+      debugPrint(
+          '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
+      debugPrint(
+          '  estimasiProduksiBulanan: ${_sharedData!.estimasiProduksiBulanan} (${_sharedData!.estimasiProduksiBulanan.runtimeType})');
+      debugPrint(
+          '  hppMurniPerPorsi: ${_sharedData!.hppMurniPerPorsi} (${_sharedData!.hppMurniPerPorsi.runtimeType})');
+      debugPrint('  karyawan count: ${_karyawan.length}');
 
-    _recalculateOperational();
+      _recalculateOperational();
+    } catch (e) {
+      debugPrint('❌ Error updating shared data: $e');
+      _setError('Error updating shared data: ${e.toString()}');
+    }
   }
 
-  // FIXED: Helper method for safe double conversion
-  double _ensureDouble(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) {
-      return double.tryParse(value) ?? 0.0;
+  // FIXED: Enhanced helper method with comprehensive null and edge case handling
+  double _ensureDoubleOrDefault(dynamic value, double defaultValue) {
+    if (value == null) return defaultValue;
+
+    try {
+      if (value is double) {
+        return value.isFinite ? value : defaultValue;
+      }
+      if (value is int) {
+        return value.toDouble();
+      }
+      if (value is String) {
+        if (value.trim().isEmpty) return defaultValue;
+        // Clean string dari formatting
+        String cleanValue = value.replaceAll(RegExp(r'[^\d\.]'), '');
+        if (cleanValue.isEmpty) return defaultValue;
+
+        final parsed = double.tryParse(cleanValue);
+        if (parsed != null && parsed.isFinite && parsed >= 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      debugPrint('🚨 Error ensuring double: $value -> $e');
     }
-    return 0.0;
+
+    return defaultValue;
   }
 
   // ===============================================
-  // KARYAWAN CRUD METHODS - WITH AUTO SAVE
+  // KARYAWAN CRUD METHODS - WITH ENHANCED VALIDATION
   // ===============================================
 
   Future<void> addKaryawan(String nama, String jabatan, double gaji) async {
@@ -119,15 +149,18 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    final gajiValidation = InputValidator.validateSalary(gaji.toString());
-    if (gajiValidation != null) {
-      _setError('Gaji: $gajiValidation');
+    // FIXED: Safe gaji validation
+    final safeGaji = _ensureDoubleOrDefault(gaji, 0.0);
+    final salaryValidation = InputValidator.validateSalaryDirect(safeGaji);
+    if (salaryValidation != null) {
+      _setError('Gaji: $salaryValidation');
       return;
     }
 
     // Business validation
-    if (gaji < 100000) {
-      _setError('Gaji terlalu rendah (minimal Rp 100.000)');
+    if (safeGaji < AppConstants.minSalary) {
+      _setError(
+          'Gaji terlalu rendah (minimal ${AppFormatters.formatRupiah(AppConstants.minSalary)})');
       return;
     }
 
@@ -146,7 +179,7 @@ class OperationalProvider with ChangeNotifier {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: _ensureDouble(gaji), // FIXED: Ensure double
+        gajiBulanan: safeGaji,
         createdAt: DateTime.now(),
       );
 
@@ -189,9 +222,11 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    final gajiValidation = InputValidator.validateSalary(gaji.toString());
-    if (gajiValidation != null) {
-      _setError('Gaji: $gajiValidation');
+    // FIXED: Safe gaji validation
+    final safeGaji = _ensureDoubleOrDefault(gaji, 0.0);
+    final salaryValidation = InputValidator.validateSalaryDirect(safeGaji);
+    if (salaryValidation != null) {
+      _setError('Gaji: $salaryValidation');
       return;
     }
 
@@ -201,7 +236,7 @@ class OperationalProvider with ChangeNotifier {
         id: _karyawan[index].id,
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: _ensureDouble(gaji), // FIXED: Ensure double
+        gajiBulanan: safeGaji,
         createdAt: _karyawan[index].createdAt,
       );
 
@@ -276,7 +311,7 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // CORE CALCULATION METHOD - FIXED WITH TYPE CONVERSION
+  // CORE CALCULATION METHOD - FIXED WITH COMPREHENSIVE ERROR HANDLING
   // ===============================================
 
   Future<void> _recalculateOperational() async {
@@ -289,24 +324,34 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    // ENSURE DOUBLE TYPES BEFORE CALCULATION
-    double estimasiPorsi = _ensureDouble(_sharedData!.estimasiPorsi);
-    double estimasiProduksiBulanan =
-        _ensureDouble(_sharedData!.estimasiProduksiBulanan);
-    double hppMurniPerPorsi = _ensureDouble(_sharedData!.hppMurniPerPorsi);
-
-    debugPrint('📊 Input values for calculation (VERIFIED DOUBLE):');
-    debugPrint(
-        '  estimasiPorsi: $estimasiPorsi (${estimasiPorsi.runtimeType})');
-    debugPrint(
-        '  estimasiProduksiBulanan: $estimasiProduksiBulanan (${estimasiProduksiBulanan.runtimeType})');
-    debugPrint(
-        '  hppMurniPerPorsi: $hppMurniPerPorsi (${hppMurniPerPorsi.runtimeType})');
-    debugPrint('  karyawan count: ${_karyawan.length}');
-
     try {
+      // ENSURE SAFE VALUES BEFORE CALCULATION
+      double estimasiPorsi = _ensureDoubleOrDefault(
+          _sharedData!.estimasiPorsi, AppConstants.defaultEstimasiPorsi);
+      double estimasiProduksiBulanan = _ensureDoubleOrDefault(
+          _sharedData!.estimasiProduksiBulanan,
+          AppConstants.defaultEstimasiProduksi);
+      double hppMurniPerPorsi =
+          _ensureDoubleOrDefault(_sharedData!.hppMurniPerPorsi, 0.0);
+
+      debugPrint('📊 Input values for calculation (VERIFIED SAFE):');
+      debugPrint(
+          '  estimasiPorsi: $estimasiPorsi (${estimasiPorsi.runtimeType})');
+      debugPrint(
+          '  estimasiProduksiBulanan: $estimasiProduksiBulanan (${estimasiProduksiBulanan.runtimeType})');
+      debugPrint(
+          '  hppMurniPerPorsi: $hppMurniPerPorsi (${hppMurniPerPorsi.runtimeType})');
+      debugPrint('  karyawan count: ${_karyawan.length}');
+
+      // Validate that all karyawan have valid data
+      List<KaryawanData> validKaryawan =
+          _karyawan.where((k) => k.isValid).toList();
+      if (validKaryawan.length != _karyawan.length) {
+        debugPrint('⚠️ Some karyawan have invalid data, using only valid ones');
+      }
+
       final result = OperationalCalculatorService.calculateOperationalCost(
-        karyawan: _karyawan,
+        karyawan: validKaryawan,
         hppMurniPerPorsi: hppMurniPerPorsi,
         estimasiPorsiPerProduksi: estimasiPorsi,
         estimasiProduksiBulanan: estimasiProduksiBulanan,
@@ -314,20 +359,23 @@ class OperationalProvider with ChangeNotifier {
 
       debugPrint('✅ Calculation completed:');
       debugPrint('  result.isValid: ${result.isValid}');
-      debugPrint(
-          '  result.totalGajiBulanan: ${AppFormatters.formatRupiah(result.totalGajiBulanan)}');
-      debugPrint(
-          '  result.operationalCostPerPorsi: ${AppFormatters.formatRupiah(result.operationalCostPerPorsi)}');
+      if (result.isValid) {
+        debugPrint(
+            '  result.totalGajiBulanan: ${AppFormatters.formatRupiah(result.totalGajiBulanan)}');
+        debugPrint(
+            '  result.operationalCostPerPorsi: ${AppFormatters.formatRupiah(result.operationalCostPerPorsi)}');
+      }
 
       _lastCalculationResult = result;
 
       if (result.isValid) {
-        // Update shared data with operational results using explicit double conversion
+        // Update shared data with operational results using safe conversion
         _sharedData = _sharedData!.copyWith(
-          karyawan: _karyawan,
-          totalOperationalCost: _ensureDouble(result.totalGajiBulanan),
+          karyawan: validKaryawan,
+          totalOperationalCost:
+              _ensureDoubleOrDefault(result.totalGajiBulanan, 0.0),
           totalHargaSetelahOperational:
-              _ensureDouble(result.totalHargaSetelahOperational),
+              _ensureDoubleOrDefault(result.totalHargaSetelahOperational, 0.0),
         );
         debugPrint('✅ SharedData updated with calculation results');
       } else {
@@ -367,7 +415,7 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // ANALYSIS METHODS
+  // ANALYSIS METHODS - FIXED WITH NULL SAFETY
   // ===============================================
 
   Map<String, dynamic> getEfficiencyAnalysis() {
@@ -380,7 +428,8 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.analyzeKaryawanEfficiency(
       karyawan: _karyawan,
-      totalPorsiBulanan: _lastCalculationResult!.totalPorsiBulanan,
+      totalPorsiBulanan: _ensureDoubleOrDefault(
+          _lastCalculationResult!.totalPorsiBulanan, 0.0),
     );
   }
 
@@ -394,9 +443,11 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.calculateOperationalProjection(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _ensureDouble(_sharedData!.estimasiPorsi),
-      estimasiProduksiBulanan:
-          _ensureDouble(_sharedData!.estimasiProduksiBulanan),
+      estimasiPorsiPerProduksi: _ensureDoubleOrDefault(
+          _sharedData!.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
+      estimasiProduksiBulanan: _ensureDoubleOrDefault(
+          _sharedData!.estimasiProduksiBulanan,
+          AppConstants.defaultEstimasiProduksi),
     );
   }
 
@@ -430,8 +481,8 @@ class OperationalProvider with ChangeNotifier {
       _sharedData = _sharedData!.copyWith(
         karyawan: _karyawan,
         totalOperationalCost: 0.0,
-        totalHargaSetelahOperational:
-            _ensureDouble(_sharedData!.hppMurniPerPorsi), // Reset to HPP only
+        totalHargaSetelahOperational: _ensureDoubleOrDefault(
+            _sharedData!.hppMurniPerPorsi, 0.0), // Reset to HPP only
       );
     }
 
@@ -452,9 +503,11 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.calculateOperationalCostPerPorsi(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _ensureDouble(_sharedData!.estimasiPorsi),
-      estimasiProduksiBulanan:
-          _ensureDouble(_sharedData!.estimasiProduksiBulanan),
+      estimasiPorsiPerProduksi: _ensureDoubleOrDefault(
+          _sharedData!.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
+      estimasiProduksiBulanan: _ensureDoubleOrDefault(
+          _sharedData!.estimasiProduksiBulanan,
+          AppConstants.defaultEstimasiProduksi),
     );
   }
 

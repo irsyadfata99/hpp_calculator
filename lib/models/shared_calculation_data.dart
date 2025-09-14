@@ -1,4 +1,4 @@
-// lib/models/shared_calculation_data.dart - FIXED VERSION
+// lib/models/shared_calculation_data.dart - FIXED VERSION NULL SAFETY
 import 'karyawan_data.dart';
 import '../services/operational_calculator_service.dart';
 import '../utils/formatters.dart';
@@ -74,11 +74,12 @@ class SharedCalculationData {
 
   double get totalVariableCosts {
     return variableCosts.fold(
-        0.0, (sum, item) => sum + (item['totalHarga'] ?? 0.0));
+        0.0, (sum, item) => sum + _safeGetDouble(item['totalHarga'], 0.0));
   }
 
   double get totalFixedCosts {
-    return fixedCosts.fold(0.0, (sum, item) => sum + (item['nominal'] ?? 0.0));
+    return fixedCosts.fold(
+        0.0, (sum, item) => sum + _safeGetDouble(item['nominal'], 0.0));
   }
 
   int get totalItemCount {
@@ -103,44 +104,89 @@ class SharedCalculationData {
     };
   }
 
-  // FIXED: Better type conversion with explicit double casting
+  // FIXED: Enhanced fromMap with comprehensive null safety
   static SharedCalculationData fromMap(Map<String, dynamic> map) {
-    List<KaryawanData> karyawan = (map['karyawan'] as List?)
-            ?.map((item) => KaryawanData.fromMap(item as Map<String, dynamic>))
-            .toList() ??
-        [];
+    List<KaryawanData> karyawan = [];
+
+    try {
+      if (map['karyawan'] != null && map['karyawan'] is List) {
+        karyawan = (map['karyawan'] as List)
+            .map((item) {
+              try {
+                return KaryawanData.fromMap(item as Map<String, dynamic>);
+              } catch (e) {
+                print('🚨 Error parsing karyawan item: $e');
+                return null;
+              }
+            })
+            .where((item) => item != null)
+            .cast<KaryawanData>()
+            .toList();
+      }
+    } catch (e) {
+      print('🚨 Error parsing karyawan list: $e');
+      karyawan = [];
+    }
 
     return SharedCalculationData(
-      variableCosts:
-          List<Map<String, dynamic>>.from(map['variableCosts'] ?? []),
-      fixedCosts: List<Map<String, dynamic>>.from(map['fixedCosts'] ?? []),
-      estimasiPorsi: _safeConvertToDouble(map['estimasiPorsi']) ??
-          AppConstants.defaultEstimasiPorsi,
-      estimasiProduksiBulanan:
-          _safeConvertToDouble(map['estimasiProduksiBulanan']) ??
-              AppConstants.defaultEstimasiProduksi,
-      hppMurniPerPorsi: _safeConvertToDouble(map['hppMurniPerPorsi']) ?? 0.0,
+      variableCosts: _safeGetList(map['variableCosts']),
+      fixedCosts: _safeGetList(map['fixedCosts']),
+      estimasiPorsi: _safeConvertToDouble(
+          map['estimasiPorsi'], AppConstants.defaultEstimasiPorsi),
+      estimasiProduksiBulanan: _safeConvertToDouble(
+          map['estimasiProduksiBulanan'], AppConstants.defaultEstimasiProduksi),
+      hppMurniPerPorsi: _safeConvertToDouble(map['hppMurniPerPorsi'], 0.0),
       biayaVariablePerPorsi:
-          _safeConvertToDouble(map['biayaVariablePerPorsi']) ?? 0.0,
-      biayaFixedPerPorsi:
-          _safeConvertToDouble(map['biayaFixedPerPorsi']) ?? 0.0,
+          _safeConvertToDouble(map['biayaVariablePerPorsi'], 0.0),
+      biayaFixedPerPorsi: _safeConvertToDouble(map['biayaFixedPerPorsi'], 0.0),
       karyawan: karyawan,
       totalOperationalCost:
-          _safeConvertToDouble(map['totalOperationalCost']) ?? 0.0,
+          _safeConvertToDouble(map['totalOperationalCost'], 0.0),
       totalHargaSetelahOperational:
-          _safeConvertToDouble(map['totalHargaSetelahOperational']) ?? 0.0,
+          _safeConvertToDouble(map['totalHargaSetelahOperational'], 0.0),
     );
   }
 
-  // FIXED: Safe conversion method to handle int/double conversion
-  static double? _safeConvertToDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) {
-      return double.tryParse(value);
+  // FIXED: Enhanced safe conversion method with comprehensive checks
+  static double _safeConvertToDouble(dynamic value, double defaultValue) {
+    if (value == null) return defaultValue;
+
+    try {
+      if (value is double) {
+        return value.isFinite ? value : defaultValue;
+      }
+      if (value is int) {
+        return value.toDouble();
+      }
+      if (value is String) {
+        if (value.trim().isEmpty) return defaultValue;
+        final parsed = double.tryParse(value.trim());
+        return (parsed != null && parsed.isFinite) ? parsed : defaultValue;
+      }
+    } catch (e) {
+      print('🚨 Error converting to double: $value -> $e');
     }
-    return null;
+
+    return defaultValue;
+  }
+
+  // FIXED: Safe list getter
+  static List<Map<String, dynamic>> _safeGetList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) {
+      try {
+        return value.cast<Map<String, dynamic>>();
+      } catch (e) {
+        print('🚨 Error casting list: $e');
+        return [];
+      }
+    }
+    return [];
+  }
+
+  // FIXED: Safe double getter for map values
+  static double _safeGetDouble(dynamic value, double defaultValue) {
+    return _safeConvertToDouble(value, defaultValue);
   }
 
   // Create a copy with updated values - FIXED: Ensure all params are double
@@ -156,23 +202,23 @@ class SharedCalculationData {
     double? totalOperationalCost,
     double? totalHargaSetelahOperational,
   }) {
-    // FIXED: Ensure double type conversion
     return SharedCalculationData(
       variableCosts: variableCosts ?? this.variableCosts,
       fixedCosts: fixedCosts ?? this.fixedCosts,
-      estimasiPorsi: estimasiPorsi?.toDouble() ?? this.estimasiPorsi,
-      estimasiProduksiBulanan:
-          estimasiProduksiBulanan?.toDouble() ?? this.estimasiProduksiBulanan,
-      hppMurniPerPorsi: hppMurniPerPorsi?.toDouble() ?? this.hppMurniPerPorsi,
-      biayaVariablePerPorsi:
-          biayaVariablePerPorsi?.toDouble() ?? this.biayaVariablePerPorsi,
+      estimasiPorsi: _safeConvertToDouble(estimasiPorsi, this.estimasiPorsi),
+      estimasiProduksiBulanan: _safeConvertToDouble(
+          estimasiProduksiBulanan, this.estimasiProduksiBulanan),
+      hppMurniPerPorsi:
+          _safeConvertToDouble(hppMurniPerPorsi, this.hppMurniPerPorsi),
+      biayaVariablePerPorsi: _safeConvertToDouble(
+          biayaVariablePerPorsi, this.biayaVariablePerPorsi),
       biayaFixedPerPorsi:
-          biayaFixedPerPorsi?.toDouble() ?? this.biayaFixedPerPorsi,
+          _safeConvertToDouble(biayaFixedPerPorsi, this.biayaFixedPerPorsi),
       karyawan: karyawan ?? this.karyawan,
       totalOperationalCost:
-          totalOperationalCost?.toDouble() ?? this.totalOperationalCost,
-      totalHargaSetelahOperational: totalHargaSetelahOperational?.toDouble() ??
-          this.totalHargaSetelahOperational,
+          _safeConvertToDouble(totalOperationalCost, this.totalOperationalCost),
+      totalHargaSetelahOperational: _safeConvertToDouble(
+          totalHargaSetelahOperational, this.totalHargaSetelahOperational),
     );
   }
 
