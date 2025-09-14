@@ -278,9 +278,18 @@ class MenuProvider with ChangeNotifier {
 
   Future<void> addIngredient(String namaIngredient, double jumlahDipakai,
       String satuan, double hargaPerSatuan) async {
+    // DEBUG: Print what we're trying to add
+    print('🔍 DEBUG addIngredient called with:');
+    print('  namaIngredient: "$namaIngredient"');
+    print('  jumlahDipakai: $jumlahDipakai');
+    print('  satuan: "$satuan"');
+    print('  hargaPerSatuan: $hargaPerSatuan');
+    print('  Current _komposisiMenu length: ${_komposisiMenu.length}');
+
     // Validate inputs
     final namaValidation = InputValidator.validateName(namaIngredient);
     if (namaValidation != null) {
+      print('❌ Name validation failed: $namaValidation');
       _setError('Nama ingredient: $namaValidation');
       return;
     }
@@ -288,6 +297,7 @@ class MenuProvider with ChangeNotifier {
     final jumlahValidation =
         InputValidator.validateQuantity(jumlahDipakai.toString());
     if (jumlahValidation != null) {
+      print('❌ Quantity validation failed: $jumlahValidation');
       _setError('Jumlah: $jumlahValidation');
       return;
     }
@@ -295,6 +305,7 @@ class MenuProvider with ChangeNotifier {
     final hargaValidation =
         InputValidator.validatePrice(hargaPerSatuan.toString());
     if (hargaValidation != null) {
+      print('❌ Price validation failed: $hargaValidation');
       _setError('Harga per satuan: $hargaValidation');
       return;
     }
@@ -305,13 +316,15 @@ class MenuProvider with ChangeNotifier {
         namaIngredient.toLowerCase().trim());
 
     if (isDuplicate) {
+      print('❌ Duplicate ingredient detected: $namaIngredient');
       _setError('Ingredient sudah ada dalam komposisi');
       return;
     }
 
     _setLoading(true);
     try {
-      // FIXED: Use prefixed class name
+      print('✅ All validations passed, creating MenuComposition...');
+
       final newComposition = MenuModel.MenuComposition(
         namaIngredient: namaIngredient.trim(),
         jumlahDipakai: jumlahDipakai,
@@ -319,14 +332,34 @@ class MenuProvider with ChangeNotifier {
         hargaPerSatuan: hargaPerSatuan,
       );
 
+      print('✅ MenuComposition created successfully');
+      print('  totalCost: ${newComposition.totalCost}');
+
       _komposisiMenu = [..._komposisiMenu, newComposition];
+
+      print('✅ Added to _komposisiMenu');
+      print('  New length: ${_komposisiMenu.length}');
+      print('  Items in composition:');
+      for (int i = 0; i < _komposisiMenu.length; i++) {
+        final item = _komposisiMenu[i];
+        print(
+            '    [$i] ${item.namaIngredient}: ${item.jumlahDipakai} ${item.satuan} @ ${item.hargaPerSatuan} = ${item.totalCost}');
+      }
+
       await _recalculateMenu();
       _setError(null);
       debugPrint('✅ Ingredient added to menu: $namaIngredient');
+
+      // Force notify listeners
+      notifyListeners();
+      print('✅ notifyListeners() called');
     } catch (e) {
+      print('❌ Exception in addIngredient: $e');
+      print('❌ Stack trace: ${StackTrace.current}');
       _setError('Error adding ingredient: ${e.toString()}');
     } finally {
       _setLoading(false);
+      print('🔚 addIngredient method completed');
     }
   }
 
