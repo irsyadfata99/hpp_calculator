@@ -424,7 +424,7 @@ class StorageService {
       }
 
       // FIXED: Additional null and edge case checks
-      if (parsed == null || !parsed.isFinite) {
+      if (parsed == null || !parsed.isFinite || parsed.isNaN) {
         return defaultValue;
       }
 

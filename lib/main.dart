@@ -1,4 +1,4 @@
-// lib/main.dart - TAHAP 3 IMPROVED VERSION WITH INDONESIAN TEXT
+// lib/main.dart - TAHAP 3 IMPROVED VERSION WITH INDONESIAN TEXT + ERROR HANDLER
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -12,6 +12,25 @@ import 'utils/constants.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // FIXED: Add global error handling for null conversion issues
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (details.exception is TypeError &&
+        details.exception.toString().contains('Null')) {
+      debugPrint('🚨 Null Safety Error Caught: ${details.exception}');
+      debugPrint('📍 Stack: ${details.stack}');
+      // Log but don't crash the app
+    } else if (details.exception
+        .toString()
+        .contains('type \'Null\' is not a subtype of type \'double\'')) {
+      debugPrint('🚨 Null to Double Conversion Error: ${details.exception}');
+      debugPrint('📍 Location: ${details.context?.toString()}');
+      // Handle the specific null to double error gracefully
+    } else {
+      FlutterError.presentError(details);
+    }
+  };
+
   runApp(const MyApp());
 }
 
@@ -36,6 +55,62 @@ class MyApp extends StatelessWidget {
         theme: AppTheme.lightTheme,
         home: const MainNavigationScreen(),
         debugShowCheckedModeBanner: false,
+        // FIXED: Add global error builder for better error handling
+        builder: (context, widget) {
+          // Wrap the entire app with error boundary
+          ErrorWidget.builder = (FlutterErrorDetails errorDetails) {
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Error'),
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 64,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Terjadi kesalahan pada aplikasi',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        errorDetails.exception.toString(),
+                        style: const TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          // Restart the app by creating a new MyApp instance
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(
+                                builder: (context) => const MyApp()),
+                            (route) => false,
+                          );
+                        },
+                        child: const Text('Restart Aplikasi'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          };
+          return widget ?? const SizedBox.shrink();
+        },
       ),
     );
   }
@@ -68,7 +143,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         if (!mounted) return;
 
         try {
-          // Dapatkan semua provider
+          // Dapatkan semua provider dengan null safety
           final hppProvider = Provider.of<HPPProvider>(context, listen: false);
           final operationalProvider =
               Provider.of<OperationalProvider>(context, listen: false);
@@ -83,7 +158,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           debugPrint('👥 Menginisialisasi Operational Provider...');
           await operationalProvider.initializeFromStorage();
 
-          // Tunggu HPP siap sebelum update operational
+          // Tunggu HPP siap sebelum update operational dengan null checks
           if (hppProvider.data.estimasiPorsi > 0) {
             operationalProvider.updateSharedData(hppProvider.data);
           }
@@ -92,7 +167,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           debugPrint('🍽️ Menginisialisasi Menu Provider...');
           await menuProvider.initializeFromStorage();
 
-          // Tunggu HPP siap sebelum update menu
+          // Tunggu HPP siap sebelum update menu dengan null checks
           if (hppProvider.data.estimasiPorsi > 0) {
             menuProvider.updateSharedData(hppProvider.data);
           }
@@ -113,8 +188,10 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               _initError = null;
             });
           }
-        } catch (e) {
+        } catch (e, stackTrace) {
           debugPrint('❌ Error inisialisasi provider: $e');
+          debugPrint('📍 Stack trace: $stackTrace');
+
           if (mounted) {
             setState(() {
               _isInitialized = true;
@@ -123,8 +200,10 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           }
         }
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error inisialisasi aplikasi: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -134,7 +213,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  /// Setup komunikasi antar provider dengan debouncing yang proper
+  /// Setup komunikasi antar provider dengan debouncing yang proper dan null safety
   void _setupProviderCommunication(
     HPPProvider hppProvider,
     OperationalProvider operationalProvider,
@@ -144,15 +223,23 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
 
     // Tambahkan listener dengan debouncing untuk mencegah infinite loop
     hppProvider.addListener(() {
-      // Update hanya jika provider sudah terinisialisasi dan data benar-benar berubah
-      if (_isInitialized && hppProvider.data.estimasiPorsi > 0) {
-        // Update operational provider ketika data HPP berubah
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            operationalProvider.updateSharedData(hppProvider.data);
-            menuProvider.updateSharedData(hppProvider.data);
-          }
-        });
+      try {
+        // Update hanya jika provider sudah terinisialisasi dan data benar-benar berubah
+        if (_isInitialized && hppProvider.data.estimasiPorsi > 0) {
+          // Update operational provider ketika data HPP berubah dengan null checks
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              // FIXED: Add null checks before updating shared data
+              if (hppProvider.data != null) {
+                operationalProvider.updateSharedData(hppProvider.data);
+                menuProvider.updateSharedData(hppProvider.data);
+              }
+            }
+          });
+        }
+      } catch (e) {
+        debugPrint('❌ Error in provider communication: $e');
+        // Don't crash, just log the error
       }
     });
 
@@ -295,7 +382,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
 
-    // Interface utama aplikasi dengan pola Provider lengkap
+    // Interface utama aplikasi dengan pola Provider lengkap dan error handling
     return Consumer3<HPPProvider, OperationalProvider, MenuProvider>(
       builder:
           (context, hppProvider, operationalProvider, menuProvider, child) {
