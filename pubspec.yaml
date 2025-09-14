@@ -16,15 +16,9 @@ dependencies:
   # Input formatting
   intl: ^0.19.0
 
-  # Local storage
+  # Local storage dan state management
   shared_preferences: ^2.3.2
   provider: ^6.1.2
-
-  # === TAMBAHAN UNTUK TAHAP 1: DATA PERSISTENCE ===
-  # File handling untuk export/import
-  file_picker: ^8.1.2 # Updated to latest version to fix build issues
-  share_plus: ^10.0.2 # Updated to latest version
-  path_provider: ^2.1.4 # Updated to latest version
 
 dev_dependencies:
   flutter_test:

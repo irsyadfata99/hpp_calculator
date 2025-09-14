@@ -1,4 +1,4 @@
-// lib/providers/hpp_provider.dart - COMPLETE IMPLEMENTATION
+// lib/providers/hpp_provider.dart - COMPLETE IMPLEMENTATION (No Export/Import)
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/shared_calculation_data.dart';
@@ -264,57 +264,6 @@ class HPPProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('❌ HPP Auto-save failed: $e');
       // Don't set error for auto-save failures to avoid UI disruption
-    }
-  }
-
-  // ===============================================
-  // EXPORT/IMPORT FUNCTIONALITY
-  // ===============================================
-
-  Future<String?> exportData() async {
-    try {
-      _setLoading(true);
-      return await StorageService.exportData();
-    } catch (e) {
-      _setError('Export failed: ${e.toString()}');
-      return null;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<bool> importData(String jsonData) async {
-    try {
-      _setLoading(true);
-      final success = await StorageService.importData(jsonData);
-      if (success) {
-        await initializeFromStorage(); // Reload data
-        debugPrint('✅ HPP Data imported successfully');
-      } else {
-        _setError('Import failed: Invalid data format');
-      }
-      return success;
-    } catch (e) {
-      _setError('Import failed: ${e.toString()}');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<void> clearAllData() async {
-    try {
-      _setLoading(true);
-      await StorageService.clearAllData();
-      _data = SharedCalculationData();
-      _lastCalculationResult = null;
-      _setError(null);
-      debugPrint('🗑️ HPP Data cleared');
-      notifyListeners();
-    } catch (e) {
-      _setError('Clear data failed: ${e.toString()}');
-    } finally {
-      _setLoading(false);
     }
   }
 

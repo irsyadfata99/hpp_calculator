@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - COMPLETE IMPLEMENTATION WITH TYPE FIX
+// lib/providers/operational_provider.dart - COMPLETE IMPLEMENTATION (No Export/Import)
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -363,41 +363,6 @@ class OperationalProvider with ChangeNotifier {
           '💾 Operational Auto-save completed: ${_karyawan.length} karyawan');
     } catch (e) {
       debugPrint('❌ Operational Auto-save failed: $e');
-    }
-  }
-
-  // ===============================================
-  // EXPORT/IMPORT FUNCTIONALITY
-  // ===============================================
-
-  Future<String?> exportData() async {
-    try {
-      _setLoading(true);
-      return await StorageService.exportData();
-    } catch (e) {
-      _setError('Export failed: ${e.toString()}');
-      return null;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<bool> importData(String jsonData) async {
-    try {
-      _setLoading(true);
-      final success = await StorageService.importData(jsonData);
-      if (success) {
-        await initializeFromStorage();
-        debugPrint('✅ Operational Data imported successfully');
-      } else {
-        _setError('Import failed: Invalid data format');
-      }
-      return success;
-    } catch (e) {
-      _setError('Import failed: ${e.toString()}');
-      return false;
-    } finally {
-      _setLoading(false);
     }
   }
 

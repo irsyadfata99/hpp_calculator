@@ -1,4 +1,4 @@
-// lib/screens/operational_calculator_screen.dart - FIXED VERSION
+// lib/screens/operational_calculator_screen.dart - WITHOUT EXPORT/IMPORT
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/operational_provider.dart';
@@ -8,7 +8,6 @@ import '../widgets/operational/operational_cost_widget.dart';
 import '../widgets/operational/total_operational_result_widget.dart';
 import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
-import '../widgets/common/error_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
 
@@ -36,7 +35,6 @@ class OperationalCalculatorScreenState
     final operationalProvider =
         Provider.of<OperationalProvider>(context, listen: false);
 
-    // FIXED: Remove debug print statements that were causing issues
     debugPrint('🔗 Setting up operational provider communication...');
     debugPrint(
         '📊 HPP Data: ${hppProvider.data.estimasiPorsi} porsi, ${hppProvider.data.hppMurniPerPorsi} HPP');
@@ -51,7 +49,7 @@ class OperationalCalculatorScreenState
       appBar: _buildAppBar(),
       body: Consumer2<OperationalProvider, HPPProvider>(
         builder: (context, operationalProvider, hppProvider, child) {
-          // FIXED: Ensure data synchronization without debug prints in build method
+          // Ensure data synchronization
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (operationalProvider.sharedData == null ||
                 operationalProvider.sharedData!.estimasiPorsi !=
@@ -173,23 +171,6 @@ class OperationalCalculatorScreenState
               child: ListTile(
                 leading: Icon(Icons.timeline),
                 title: Text('Proyeksi Bulanan'),
-                dense: true,
-              ),
-            ),
-            PopupMenuDivider(),
-            PopupMenuItem(
-              value: 'export',
-              child: ListTile(
-                leading: Icon(Icons.download),
-                title: Text('Export Data'),
-                dense: true,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'import',
-              child: ListTile(
-                leading: Icon(Icons.upload),
-                title: Text('Import Data'),
                 dense: true,
               ),
             ),
@@ -419,12 +400,6 @@ class OperationalCalculatorScreenState
       case 'projection':
         _showProjectionAnalysis(operationalProvider);
         break;
-      case 'export':
-        await _handleExport(context, operationalProvider);
-        break;
-      case 'import':
-        await _handleImport(context, operationalProvider);
-        break;
       case 'reset':
         await _handleReset(context, operationalProvider);
         break;
@@ -539,64 +514,6 @@ class OperationalCalculatorScreenState
             child: const Text('Tutup'),
           ),
         ],
-      ),
-    );
-  }
-
-  Future<void> _handleExport(
-      BuildContext context, OperationalProvider provider) async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2)),
-              SizedBox(width: 16),
-              Text('📤 Preparing export...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      final result = await provider.exportData();
-
-      if (result != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Data exported successfully!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      } else if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Export failed'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ErrorDialog.show(
-          context,
-          title: 'Export Error',
-          message: e.toString(),
-          onRetry: () => _handleExport(context, provider),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleImport(
-      BuildContext context, OperationalProvider provider) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Import functionality coming soon'),
-        backgroundColor: AppColors.info,
       ),
     );
   }
