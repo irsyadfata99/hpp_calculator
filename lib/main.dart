@@ -1,4 +1,4 @@
-// lib/main.dart - TAHAP 3 IMPROVED VERSION WITH INDONESIAN TEXT + ERROR HANDLER
+// lib/main.dart - TAHAP 3 IMPROVED VERSION WITH INDONESIAN TEXT + ERROR HANDLER - FIXED NULL SAFETY
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -229,11 +229,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           // Update operational provider ketika data HPP berubah dengan null checks
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              // FIXED: Add null checks before updating shared data
-              if (hppProvider.data != null) {
-                operationalProvider.updateSharedData(hppProvider.data);
-                menuProvider.updateSharedData(hppProvider.data);
-              }
+              // FIXED: Remove unnecessary null check - hppProvider.data is never null
+              operationalProvider.updateSharedData(hppProvider.data);
+              menuProvider.updateSharedData(hppProvider.data);
             }
           });
         }
@@ -438,7 +436,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           activeIcon: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -483,7 +481,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           activeIcon: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Stack(
@@ -557,7 +555,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           activeIcon: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Stack(

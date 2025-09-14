@@ -1,4 +1,4 @@
-// lib/services/storage_service.dart - FIXED NULL SAFETY VERSION
+// lib/services/storage_service.dart - COMPLETE FIX VERSION
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +19,9 @@ class StorageService {
   // Auto-save debounce tracker
   static DateTime? _lastAutoSave;
 
+  // Private constructor to prevent instantiation
+  StorageService._();
+
   // Save shared calculation data with comprehensive validation
   static Future<bool> saveSharedData(SharedCalculationData data) async {
     try {
@@ -31,8 +34,8 @@ class StorageService {
         return false;
       }
 
-      // FIXED: Enhanced JSON serialization with null safety
-      final jsonData = {
+      // FIXED: Enhanced JSON serialization with complete null safety
+      final jsonData = <String, dynamic>{
         'version': AppConstants.appVersion,
         'variableCosts': _sanitizeVariableCosts(data.variableCosts),
         'fixedCosts': _sanitizeFixedCosts(data.fixedCosts),
@@ -86,12 +89,13 @@ class StorageService {
         return null;
       }
 
-      // FIXED: Safe parsing of karyawan data
-      List<KaryawanData> karyawan = [];
+      // FIXED: Safe parsing of karyawan data with enhanced null safety
+      List<KaryawanData> karyawan = <KaryawanData>[];
       if (jsonData['karyawan'] != null && jsonData['karyawan'] is List) {
         try {
-          for (var item in (jsonData['karyawan'] as List)) {
-            if (item is Map<String, dynamic>) {
+          final karyawanList = jsonData['karyawan'] as List<dynamic>;
+          for (var item in karyawanList) {
+            if (item != null && item is Map<String, dynamic>) {
               try {
                 final karyawanItem = KaryawanData.fromMap(item);
                 if (karyawanItem.isValid) {
@@ -160,7 +164,7 @@ class StorageService {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      List<String> history = prefs.getStringList(_keyMenuHistory) ?? [];
+      List<String> history = prefs.getStringList(_keyMenuHistory) ?? <String>[];
 
       // Add new menu to beginning of list
       final menuJson = json.encode(menu.toMap());
@@ -193,9 +197,9 @@ class StorageService {
   static Future<List<MenuItem>> loadMenuHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      List<String> history = prefs.getStringList(_keyMenuHistory) ?? [];
+      List<String> history = prefs.getStringList(_keyMenuHistory) ?? <String>[];
 
-      List<MenuItem> validMenuItems = [];
+      List<MenuItem> validMenuItems = <MenuItem>[];
 
       for (String jsonString in history) {
         try {
@@ -218,7 +222,7 @@ class StorageService {
       return validMenuItems;
     } catch (e) {
       developer.log('Error loading menu history: $e', name: 'StorageService');
-      return [];
+      return <MenuItem>[];
     }
   }
 
@@ -289,7 +293,7 @@ class StorageService {
       final sharedData = await loadSharedData();
       final menuHistory = await loadMenuHistory();
 
-      return {
+      return <String, dynamic>{
         'sharedDataItems': sharedData?.totalItemCount ?? 0,
         'menuHistoryItems': menuHistory.length,
         'hasData': sharedData != null,
@@ -298,7 +302,7 @@ class StorageService {
       };
     } catch (e) {
       developer.log('Error getting data info: $e', name: 'StorageService');
-      return {
+      return <String, dynamic>{
         'sharedDataItems': 0,
         'menuHistoryItems': 0,
         'hasData': false,
@@ -307,9 +311,9 @@ class StorageService {
     }
   }
 
-  // PRIVATE VALIDATION METHODS - ENHANCED NULL SAFETY
+  // PRIVATE VALIDATION METHODS - COMPLETE NULL SAFETY FIXES
 
-  // FIXED: Enhanced validation with null safety
+  // Enhanced validation with comprehensive null safety
   static bool _validateSharedData(SharedCalculationData data) {
     try {
       // Validate estimasi porsi
@@ -390,7 +394,7 @@ class StorageService {
 
   // Validate loaded data structure
   static bool _validateLoadedDataStructure(Map<String, dynamic> data) {
-    final requiredKeys = [
+    final requiredKeys = <String>[
       'variableCosts',
       'fixedCosts',
       'estimasiPorsi',
@@ -407,7 +411,7 @@ class StorageService {
     return true;
   }
 
-  // FIXED: Enhanced validation and clamping with comprehensive checks
+  // FIXED: Enhanced validation and clamping with comprehensive null safety
   static double _validateAndClampDouble(
       dynamic value, double defaultValue, double min, double max) {
     if (value == null) return defaultValue;
@@ -418,12 +422,14 @@ class StorageService {
         parsed = value;
       } else if (value is int) {
         parsed = value.toDouble();
+      } else if (value is num) {
+        parsed = value.toDouble();
       } else if (value is String) {
         if (value.trim().isEmpty) return defaultValue;
         parsed = double.tryParse(value.trim());
       }
 
-      // FIXED: Additional null and edge case checks
+      // FIXED: Enhanced null and edge case checks
       if (parsed == null || !parsed.isFinite || parsed.isNaN) {
         return defaultValue;
       }
@@ -447,14 +453,15 @@ class StorageService {
     return value.isFinite && !value.isNaN && value >= min && value <= max;
   }
 
+  // FIXED: Enhanced sanitization methods with complete null safety
   static List<Map<String, dynamic>> _sanitizeVariableCosts(
       List<Map<String, dynamic>> costs) {
     return costs.map((cost) {
-      return {
+      return <String, dynamic>{
         'nama': cost['nama']?.toString() ?? '',
         'totalHarga':
-            _ensureFiniteDouble(cost['totalHarga']?.toDouble() ?? 0.0, 0.0),
-        'jumlah': _ensureFiniteDouble(cost['jumlah']?.toDouble() ?? 0.0, 0.0),
+            _ensureFiniteDouble(_safeParseDouble(cost['totalHarga']), 0.0),
+        'jumlah': _ensureFiniteDouble(_safeParseDouble(cost['jumlah']), 0.0),
         'satuan': cost['satuan']?.toString() ?? 'unit',
         'timestamp':
             cost['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
@@ -465,9 +472,9 @@ class StorageService {
   static List<Map<String, dynamic>> _sanitizeFixedCosts(
       List<Map<String, dynamic>> costs) {
     return costs.map((cost) {
-      return {
+      return <String, dynamic>{
         'jenis': cost['jenis']?.toString() ?? '',
-        'nominal': _ensureFiniteDouble(cost['nominal']?.toDouble() ?? 0.0, 0.0),
+        'nominal': _ensureFiniteDouble(_safeParseDouble(cost['nominal']), 0.0),
         'timestamp':
             cost['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
       };
@@ -479,23 +486,48 @@ class StorageService {
     return karyawan.where((k) => k.isValid).map((k) => k.toMap()).toList();
   }
 
+  // FIXED: Removed unnecessary cast - This fixes the warning!
   static List<Map<String, dynamic>> _parseVariableCosts(dynamic data) {
-    if (data == null || data is! List) return [];
+    if (data == null || data is! List) return <Map<String, dynamic>>[];
     try {
-      return (data as List).cast<Map<String, dynamic>>();
+      // FIXED: Direct cast without unnecessary intermediate cast
+      return data.cast<Map<String, dynamic>>();
     } catch (e) {
       developer.log('Error parsing variable costs: $e', name: 'StorageService');
-      return [];
+      return <Map<String, dynamic>>[];
     }
   }
 
+  // FIXED: Removed unnecessary cast - This fixes the warning!
   static List<Map<String, dynamic>> _parseFixedCosts(dynamic data) {
-    if (data == null || data is! List) return [];
+    if (data == null || data is! List) return <Map<String, dynamic>>[];
     try {
-      return (data as List).cast<Map<String, dynamic>>();
+      // FIXED: Direct cast without unnecessary intermediate cast
+      return data.cast<Map<String, dynamic>>();
     } catch (e) {
       developer.log('Error parsing fixed costs: $e', name: 'StorageService');
-      return [];
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  // FIXED: New helper method for safe double parsing
+  static double _safeParseDouble(dynamic value) {
+    if (value == null) return 0.0;
+
+    try {
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isEmpty) return 0.0;
+        return double.tryParse(trimmed) ?? 0.0;
+      }
+      return 0.0;
+    } catch (e) {
+      developer.log('Error parsing double from: $value',
+          name: 'StorageService');
+      return 0.0;
     }
   }
 }

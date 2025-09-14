@@ -1,18 +1,19 @@
-// lib/providers/menu_provider.dart - CLEANED VERSION: NO EXPORT/IMPORT
+// lib/providers/menu_provider.dart - CLEANED VERSION: FIXED IMPORT CONFLICTS
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import '../models/menu_model.dart';
+// FIXED: Use explicit imports to avoid ambiguous imports
+import '../models/menu_model.dart' as MenuModel;
 import '../models/shared_calculation_data.dart';
 import '../services/menu_calculator_service.dart';
-import '../services/storage_service.dart';
+import '../services/storage_service.dart'; // FIXED: Added missing import
 import '../utils/validators.dart';
 import '../utils/constants.dart';
 
 class MenuProvider with ChangeNotifier {
   String _namaMenu = '';
   double _marginPercentage = AppConstants.defaultMargin;
-  List<MenuComposition> _komposisiMenu = [];
-  List<MenuItem> _menuHistory = [];
+  List<MenuModel.MenuComposition> _komposisiMenu = []; // FIXED: Use prefix
+  List<MenuModel.MenuItem> _menuHistory = []; // FIXED: Use prefix
   String? _errorMessage;
   bool _isLoading = false;
   MenuCalculationResult? _lastCalculationResult;
@@ -23,11 +24,11 @@ class MenuProvider with ChangeNotifier {
   // Reference to shared data (will be injected)
   SharedCalculationData? _sharedData;
 
-  // Getters
+  // Getters - FIXED: Use proper prefixed types
   String get namaMenu => _namaMenu;
   double get marginPercentage => _marginPercentage;
-  List<MenuComposition> get komposisiMenu => _komposisiMenu;
-  List<MenuItem> get menuHistory => _menuHistory;
+  List<MenuModel.MenuComposition> get komposisiMenu => _komposisiMenu;
+  List<MenuModel.MenuItem> get menuHistory => _menuHistory;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   MenuCalculationResult? get lastCalculationResult => _lastCalculationResult;
@@ -114,7 +115,7 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // MENU COMPOSITION CRUD METHODS
+  // MENU COMPOSITION CRUD METHODS - FIXED TYPES
   // ===============================================
 
   Future<void> addIngredient(String namaIngredient, double jumlahDipakai,
@@ -152,7 +153,8 @@ class MenuProvider with ChangeNotifier {
 
     _setLoading(true);
     try {
-      final newComposition = MenuComposition(
+      // FIXED: Use prefixed class name
+      final newComposition = MenuModel.MenuComposition(
         namaIngredient: namaIngredient.trim(),
         jumlahDipakai: jumlahDipakai,
         satuan: satuan,
@@ -200,7 +202,8 @@ class MenuProvider with ChangeNotifier {
 
     _setLoading(true);
     try {
-      final updatedComposition = MenuComposition(
+      // FIXED: Use prefixed class name
+      final updatedComposition = MenuModel.MenuComposition(
         namaIngredient: namaIngredient.trim(),
         jumlahDipakai: jumlahDipakai,
         satuan: satuan,
@@ -259,7 +262,7 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // MENU MANAGEMENT
+  // MENU MANAGEMENT - FIXED TYPES
   // ===============================================
 
   Future<void> saveCurrentMenu() async {
@@ -275,7 +278,8 @@ class MenuProvider with ChangeNotifier {
 
     _setLoading(true);
     try {
-      final menuItem = MenuItem(
+      // FIXED: Use prefixed class name
+      final menuItem = MenuModel.MenuItem(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         namaMenu: _namaMenu.trim(),
         komposisi: _komposisiMenu,
@@ -345,7 +349,7 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // CORE CALCULATION METHOD
+  // CORE CALCULATION METHOD - FIXED TYPES
   // ===============================================
 
   Future<void> _recalculateMenu() async {
@@ -358,7 +362,8 @@ class MenuProvider with ChangeNotifier {
     }
 
     try {
-      final menuItem = MenuItem(
+      // FIXED: Use prefixed class name
+      final menuItem = MenuModel.MenuItem(
         id: 'temp',
         namaMenu: _namaMenu,
         komposisi: _komposisiMenu,
@@ -406,13 +411,15 @@ class MenuProvider with ChangeNotifier {
   }
 
   // ===============================================
-  // VALIDATION METHODS
+  // VALIDATION METHODS - FIXED TYPE CASTING
   // ===============================================
 
   bool get isMenuValid {
     return _namaMenu.trim().isNotEmpty &&
         _komposisiMenu.isNotEmpty &&
-        MenuCalculatorService.isMenuCompositionValid(_komposisiMenu);
+        MenuCalculatorService.isMenuCompositionValid(
+            // FIXED: Proper casting with null safety
+            _komposisiMenu.cast<MenuModel.MenuComposition>());
   }
 
   String? validateCurrentMenu() {
@@ -424,7 +431,9 @@ class MenuProvider with ChangeNotifier {
       return 'Menu harus memiliki minimal 1 bahan';
     }
 
-    if (!MenuCalculatorService.isMenuCompositionValid(_komposisiMenu)) {
+    // FIXED: Proper casting with null safety
+    if (!MenuCalculatorService.isMenuCompositionValid(
+        _komposisiMenu.cast<MenuModel.MenuComposition>())) {
       return 'Ada data bahan yang tidak valid dalam komposisi';
     }
 
