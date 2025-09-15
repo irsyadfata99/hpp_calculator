@@ -1,4 +1,4 @@
-// lib/widgets/hpp/variable_cost_widget.dart - CRITICAL FIX: Form Controllers + Input Parsing
+// lib/widgets/hpp/variable_cost_widget.dart - CRITICAL FIX: Null Safety Issues Resolved
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/universal_unit_service.dart';
@@ -26,18 +26,17 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   final _totalHargaController = TextEditingController();
   final _jumlahController = TextEditingController();
   String _selectedSatuan = 'unit';
-  bool _isProcessing = false; // CRITICAL FIX: Add processing state
+  bool _isProcessing = false;
 
   @override
   void dispose() {
-    // CRITICAL FIX: Proper controller disposal
     _namaController.dispose();
     _totalHargaController.dispose();
     _jumlahController.dispose();
     super.dispose();
   }
 
-  // CRITICAL FIX: Enhanced input parsing
+  // CRITICAL FIX: Enhanced input parsing with comprehensive null safety
   double? _parseDouble(String value) {
     if (value.trim().isEmpty) return null;
 
@@ -238,7 +237,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         // Nama Barang
         TextFormField(
           controller: _namaController,
-          enabled: !_isProcessing, // CRITICAL FIX: Disable during processing
+          enabled: !_isProcessing,
           decoration: const InputDecoration(
             labelText: 'Nama Bahan',
             hintText: 'Contoh: Kain Katun, Selai, Kertas A4',
@@ -399,13 +398,14 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   }
 
   Widget _buildItemTile(Map<String, dynamic> item, int index) {
-    // CRITICAL FIX: Safe value extraction
-    final nama = item['nama']?.toString() ?? 'Unknown';
-    final totalHarga = _parseDouble(item['totalHarga']?.toString()) ?? 0.0;
-    final jumlah = _parseDouble(item['jumlah']?.toString()) ?? 0.0;
+    // CRITICAL FIX: Comprehensive null safety for all string conversions
+    final nama = item['nama']?.toString() ?? 'Unknown Item';
+    final totalHarga =
+        _parseDouble(item['totalHarga']?.toString() ?? '0') ?? 0.0;
+    final jumlah = _parseDouble(item['jumlah']?.toString() ?? '0') ?? 0.0;
     final satuan = item['satuan']?.toString() ?? 'unit';
 
-    // CRITICAL FIX: Handle CalculationResult properly
+    // CRITICAL FIX: Handle CalculationResult properly with null safety
     CalculationResult unitPriceResult = UniversalUnitService.calculateUnitPrice(
       totalPrice: totalHarga,
       packageQuantity: jumlah,
@@ -463,7 +463,8 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
     double totalVariableCost = 0.0;
 
     for (var item in widget.variableCosts) {
-      final totalHarga = _parseDouble(item['totalHarga']?.toString()) ?? 0.0;
+      final totalHarga =
+          _parseDouble(item['totalHarga']?.toString() ?? '0') ?? 0.0;
       totalVariableCost += totalHarga;
     }
 
