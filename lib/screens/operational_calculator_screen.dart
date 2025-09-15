@@ -1,8 +1,7 @@
-// lib/screens/operational_calculator_screen.dart - FIXED FOR SYNC CONTROLLER
+// lib/screens/operational_calculator_screen.dart - PHASE 1 FIX: No DataSyncController
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/operational_provider.dart';
-import '../providers/hpp_provider.dart';
 import '../widgets/operational/karyawan_widget.dart';
 import '../widgets/operational/operational_cost_widget.dart';
 import '../widgets/operational/total_operational_result_widget.dart';
@@ -10,29 +9,16 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
-import '../services/data_sync_controller.dart';
 
-class OperationalCalculatorScreen extends StatefulWidget {
-  final DataSyncController syncController;
+class OperationalCalculatorScreen extends StatelessWidget {
+  const OperationalCalculatorScreen({super.key});
 
-  const OperationalCalculatorScreen({
-    super.key,
-    required this.syncController,
-  });
-
-  @override
-  OperationalCalculatorScreenState createState() =>
-      OperationalCalculatorScreenState();
-}
-
-class OperationalCalculatorScreenState
-    extends State<OperationalCalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _buildAppBar(),
-      body: Consumer2<OperationalProvider, HPPProvider>(
-        builder: (context, operationalProvider, hppProvider, child) {
+      appBar: _buildAppBar(context),
+      body: Consumer<OperationalProvider>(
+        builder: (context, operationalProvider, child) {
           if (operationalProvider.isLoading) {
             return const LoadingWidget(
                 message: 'Menghitung biaya operational...');
@@ -48,47 +34,34 @@ class OperationalCalculatorScreenState
 
                 // Operational Summary Card
                 _buildOperationalSummaryCard(operationalProvider),
-
                 const SizedBox(height: AppConstants.defaultPadding),
 
-                // Karyawan Widget with Provider
-                Consumer<OperationalProvider>(
-                  builder: (context, provider, child) {
-                    return KaryawanWidget(
-                      sharedData: provider.sharedData ?? hppProvider.data,
-                      onDataChanged: () {
-                        // Data changes are handled automatically by provider
-                      },
-                      onAddKaryawan: (nama, jabatan, gaji) {
-                        provider.addKaryawan(nama, jabatan, gaji);
-                      },
-                      onRemoveKaryawan: (index) {
-                        provider.removeKaryawan(index);
-                      },
-                    );
+                // Karyawan Widget - FIXED: Simple data passing
+                KaryawanWidget(
+                  sharedData: operationalProvider.hppData,
+                  onDataChanged: () {
+                    // Data changes are handled automatically by provider
+                  },
+                  onAddKaryawan: (nama, jabatan, gaji) {
+                    operationalProvider.addKaryawan(nama, jabatan, gaji);
+                  },
+                  onRemoveKaryawan: (index) {
+                    operationalProvider.removeKaryawan(index);
                   },
                 ),
 
                 const SizedBox(height: AppConstants.defaultPadding),
 
                 // Operational Cost Widget
-                Consumer<OperationalProvider>(
-                  builder: (context, provider, child) {
-                    return OperationalCostWidget(
-                      sharedData: provider.sharedData ?? hppProvider.data,
-                    );
-                  },
+                OperationalCostWidget(
+                  sharedData: operationalProvider.hppData,
                 ),
 
                 const SizedBox(height: AppConstants.defaultPadding),
 
                 // Total Result Widget
-                Consumer<OperationalProvider>(
-                  builder: (context, provider, child) {
-                    return TotalOperationalResultWidget(
-                      sharedData: provider.sharedData ?? hppProvider.data,
-                    );
-                  },
+                TotalOperationalResultWidget(
+                  sharedData: operationalProvider.hppData,
                 ),
 
                 // Analysis Cards (if calculation is valid)
@@ -110,7 +83,7 @@ class OperationalCalculatorScreenState
     );
   }
 
-  AppBar _buildAppBar() {
+  AppBar _buildAppBar(BuildContext context) {
     return AppBar(
       title: const Text('Kalkulator Operational'),
       backgroundColor: AppColors.primary,
@@ -121,7 +94,7 @@ class OperationalCalculatorScreenState
             if (provider.lastCalculationResult?.isValid == true) {
               return IconButton(
                 icon: const Icon(Icons.analytics),
-                onPressed: () => _showAnalysisDialog(provider),
+                onPressed: () => _showAnalysisDialog(context, provider),
                 tooltip: 'Analisis Efisiensi',
               );
             }
@@ -368,10 +341,10 @@ class OperationalCalculatorScreenState
 
     switch (action) {
       case 'efficiency':
-        _showEfficiencyAnalysis(operationalProvider);
+        _showEfficiencyAnalysis(context, operationalProvider);
         break;
       case 'projection':
-        _showProjectionAnalysis(operationalProvider);
+        _showProjectionAnalysis(context, operationalProvider);
         break;
       case 'reset':
         await _handleReset(context, operationalProvider);
@@ -379,7 +352,7 @@ class OperationalCalculatorScreenState
     }
   }
 
-  void _showAnalysisDialog(OperationalProvider provider) {
+  void _showAnalysisDialog(BuildContext context, OperationalProvider provider) {
     final analysis = provider.getEfficiencyAnalysis();
 
     showDialog(
@@ -414,7 +387,8 @@ class OperationalCalculatorScreenState
     );
   }
 
-  void _showEfficiencyAnalysis(OperationalProvider provider) {
+  void _showEfficiencyAnalysis(
+      BuildContext context, OperationalProvider provider) {
     final analysis = provider.getEfficiencyAnalysis();
 
     if (!(analysis['isAvailable'] ?? false)) {
@@ -453,7 +427,8 @@ class OperationalCalculatorScreenState
     );
   }
 
-  void _showProjectionAnalysis(OperationalProvider provider) {
+  void _showProjectionAnalysis(
+      BuildContext context, OperationalProvider provider) {
     final projection = provider.getProjectionAnalysis();
 
     if (!(projection['isAvailable'] ?? false)) {

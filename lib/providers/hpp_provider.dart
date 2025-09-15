@@ -1,4 +1,4 @@
-// lib/providers/hpp_provider.dart - FIXED: Simplified without circular dependencies
+// lib/providers/hpp_provider.dart - PHASE 1 FIX: Root Provider (No Dependencies)
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/shared_calculation_data.dart';
@@ -74,6 +74,9 @@ class HPPProvider with ChangeNotifier {
       _recalculateHPP();
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification - let ProxyProviders handle downstream updates
+      notifyListeners();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -93,6 +96,9 @@ class HPPProvider with ChangeNotifier {
       _recalculateHPP();
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification
+      notifyListeners();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -127,6 +133,9 @@ class HPPProvider with ChangeNotifier {
       _recalculateHPP();
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification
+      notifyListeners();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -146,6 +155,9 @@ class HPPProvider with ChangeNotifier {
       _recalculateHPP();
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification
+      notifyListeners();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -178,6 +190,9 @@ class HPPProvider with ChangeNotifier {
       _recalculateHPP();
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification
+      notifyListeners();
     } catch (e) {
       _setError(e.toString());
     } finally {
@@ -230,7 +245,7 @@ class HPPProvider with ChangeNotifier {
   // HELPER METHODS
   void _setLoading(bool loading) {
     _isLoading = loading;
-    notifyListeners();
+    if (loading) notifyListeners(); // Only notify when starting to load
   }
 
   void _setError(String? error) {

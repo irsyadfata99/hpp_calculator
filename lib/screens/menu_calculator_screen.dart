@@ -1,4 +1,4 @@
-// lib/screens/menu_calculator_screen.dart - FIXED FOR SYNC CONTROLLER
+// lib/screens/menu_calculator_screen.dart - PHASE 1 FIX: No DataSyncController
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/menu_provider.dart';
@@ -11,95 +11,28 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
-import '../services/data_sync_controller.dart';
 
-class MenuCalculatorScreen extends StatefulWidget {
-  final DataSyncController syncController;
-
-  const MenuCalculatorScreen({
-    super.key,
-    required this.syncController,
-  });
-
-  @override
-  MenuCalculatorScreenState createState() => MenuCalculatorScreenState();
-}
-
-class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
-  bool _isInitialized = false;
-  String? _initError;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeScreen();
-  }
-
-  void _initializeScreen() async {
-    try {
-      // Wait for next frame to ensure providers are ready
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      if (!mounted) return;
-
-      final hppProvider = Provider.of<HPPProvider>(context, listen: false);
-      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
-
-      // FIXED: Simple one-time sync - no loops
-      if (hppProvider.data.variableCosts.isNotEmpty) {
-        menuProvider.updateSharedData(hppProvider.data);
-        debugPrint('✅ Menu screen initialized with HPP data');
-      }
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-          _initError = null;
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Menu screen initialization error: $e');
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-          _initError = e.toString();
-        });
-      }
-    }
-  }
+class MenuCalculatorScreen extends StatelessWidget {
+  const MenuCalculatorScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return Scaffold(
-        appBar: _buildAppBar(),
-        body: const LoadingWidget(message: 'Loading menu calculator...'),
-      );
-    }
-
-    if (_initError != null) {
-      return Scaffold(
-        appBar: _buildAppBar(),
-        body: _buildErrorState(_initError!),
-      );
-    }
-
     return Scaffold(
-      appBar: _buildAppBar(),
-      body: Consumer<MenuProvider>(
-        builder: (context, menuProvider, child) {
-          // FIXED: Simple error handling
-          if (menuProvider.errorMessage?.contains('TypeError') == true) {
-            return _buildErrorState('Menu calculation error');
+      appBar: _buildAppBar(context),
+      body: Consumer2<MenuProvider, HPPProvider>(
+        builder: (context, menuProvider, hppProvider, child) {
+          // FIXED: Check for prerequisites first
+          if (hppProvider.data.variableCosts.isEmpty) {
+            return _buildEmptyHPPDataState(context);
           }
 
-          return _buildMainContent(menuProvider);
+          return _buildMainContent(context, menuProvider);
         },
       ),
     );
   }
 
-  AppBar _buildAppBar() {
+  AppBar _buildAppBar(BuildContext context) {
     return AppBar(
       title: const Text('Menu Calculator'),
       backgroundColor: AppColors.primary,
@@ -110,7 +43,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             if (provider.lastCalculationResult?.isValid == true) {
               return IconButton(
                 icon: const Icon(Icons.info_outline),
-                onPressed: () => _showMenuAnalysis(provider),
+                onPressed: () => _showMenuAnalysis(context, provider),
                 tooltip: 'Menu Analysis',
               );
             }
@@ -118,7 +51,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
           },
         ),
         PopupMenuButton<String>(
-          onSelected: (value) => _handleMenuAction(value),
+          onSelected: (value) => _handleMenuAction(context, value),
           itemBuilder: (context) => const [
             PopupMenuItem(
               value: 'save',
@@ -142,153 +75,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  Widget _buildErrorState(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: AppColors.error),
-            const SizedBox(height: 16),
-            const Text(
-              'Menu Calculator Error',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _isInitialized = false;
-                  _initError = null;
-                });
-                _initializeScreen();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMainContent(MenuProvider menuProvider) {
-    // FIXED: Check for prerequisites first
-    final hppProvider = Provider.of<HPPProvider>(context, listen: false);
-
-    if (hppProvider.data.variableCosts.isEmpty) {
-      return _buildEmptyHPPDataState();
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppConstants.defaultPadding),
-      child: Column(
-        children: [
-          // Error message
-          if (menuProvider.errorMessage != null)
-            _buildErrorMessage(menuProvider),
-
-          // Menu Summary
-          _buildMenuSummaryCard(menuProvider),
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // Menu Input - FIXED: Safe widget wrapper
-          _buildSafeWidget(
-            () => MenuInputWidget(
-              namaMenu: menuProvider.namaMenu,
-              marginPercentage: menuProvider.marginPercentage,
-              onNamaMenuChanged: menuProvider.updateNamaMenu,
-              onMarginChanged: menuProvider.updateMarginPercentage,
-              onDataChanged: () {}, // Not needed with Provider
-            ),
-            'Menu Input',
-          ),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // Ingredient Selector - FIXED: Safe widget wrapper
-          _buildSafeWidget(
-            () => MenuIngredientSelectorWidget(
-              availableIngredients: menuProvider.availableIngredients,
-              onAddIngredient: menuProvider.addIngredient,
-            ),
-            'Ingredient Selector',
-          ),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // Menu Composition - FIXED: Safe widget wrapper
-          _buildSafeWidget(
-            () => MenuCompositionListWidget(
-              komposisiMenu: menuProvider.komposisiMenu,
-              onRemoveItem: menuProvider.removeIngredient,
-            ),
-            'Menu Composition',
-          ),
-
-          const SizedBox(height: AppConstants.defaultPadding),
-
-          // Calculation Result - FIXED: Safe widget wrapper
-          _buildSafeWidget(
-            () => MenuCalculationResultWidget(
-              namaMenu: menuProvider.namaMenu,
-              calculationResult: menuProvider.lastCalculationResult,
-            ),
-            'Menu Result',
-          ),
-
-          // Save button
-          if (menuProvider.isMenuValid) ...[
-            const SizedBox(height: AppConstants.defaultPadding),
-            _buildSaveMenuButton(menuProvider),
-          ],
-
-          const SizedBox(height: AppConstants.largePadding),
-        ],
-      ),
-    );
-  }
-
-  // FIXED: Safe widget wrapper to prevent crashes
-  Widget _buildSafeWidget(Widget Function() builder, String widgetName) {
-    try {
-      return builder();
-    } catch (e) {
-      debugPrint('❌ Error rendering $widgetName: $e');
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Icon(Icons.error_outline, color: AppColors.error, size: 32),
-              const SizedBox(height: 8),
-              Text('$widgetName Error',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text('Widget failed to render: ${e.toString()}',
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12)),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () => setState(() {}), // Trigger rebuild
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-  }
-
-  Widget _buildEmptyHPPDataState() {
+  Widget _buildEmptyHPPDataState(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -325,6 +112,64 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMainContent(BuildContext context, MenuProvider menuProvider) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppConstants.defaultPadding),
+      child: Column(
+        children: [
+          // Error message
+          if (menuProvider.errorMessage != null)
+            _buildErrorMessage(menuProvider),
+
+          // Menu Summary
+          _buildMenuSummaryCard(menuProvider),
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Menu Input - FIXED: Simple widget
+          MenuInputWidget(
+            namaMenu: menuProvider.namaMenu,
+            marginPercentage: menuProvider.marginPercentage,
+            onNamaMenuChanged: menuProvider.updateNamaMenu,
+            onMarginChanged: menuProvider.updateMarginPercentage,
+            onDataChanged: () {}, // Not needed with Provider
+          ),
+
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Ingredient Selector - FIXED: Simple widget
+          MenuIngredientSelectorWidget(
+            availableIngredients: menuProvider.availableIngredients,
+            onAddIngredient: menuProvider.addIngredient,
+          ),
+
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Menu Composition - FIXED: Safe widget
+          MenuCompositionListWidget(
+            komposisiMenu: menuProvider.komposisiMenu,
+            onRemoveItem: menuProvider.removeIngredient,
+          ),
+
+          const SizedBox(height: AppConstants.defaultPadding),
+
+          // Calculation Result - FIXED: Simple widget
+          MenuCalculationResultWidget(
+            namaMenu: menuProvider.namaMenu,
+            calculationResult: menuProvider.lastCalculationResult,
+          ),
+
+          // Save button
+          if (menuProvider.isMenuValid) ...[
+            const SizedBox(height: AppConstants.defaultPadding),
+            _buildSaveMenuButton(context, menuProvider),
+          ],
+
+          const SizedBox(height: AppConstants.largePadding),
+        ],
       ),
     );
   }
@@ -409,11 +254,11 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  Widget _buildSaveMenuButton(MenuProvider provider) {
+  Widget _buildSaveMenuButton(BuildContext context, MenuProvider provider) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () => _handleSaveMenu(provider),
+        onPressed: () => _handleSaveMenu(context, provider),
         icon: const Icon(Icons.save),
         label: const Text('Save Menu'),
         style: ElevatedButton.styleFrom(
@@ -425,7 +270,7 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  void _showMenuAnalysis(MenuProvider provider) {
+  void _showMenuAnalysis(BuildContext context, MenuProvider provider) {
     final analysis = provider.getMenuAnalysis();
 
     showDialog(
@@ -459,21 +304,21 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     );
   }
 
-  void _handleMenuAction(String action) async {
+  void _handleMenuAction(BuildContext context, String action) async {
     final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
     try {
       switch (action) {
         case 'save':
-          await _handleSaveMenu(menuProvider);
+          await _handleSaveMenu(context, menuProvider);
           break;
         case 'reset_current':
-          await _handleResetCurrent(menuProvider);
+          await _handleResetCurrent(context, menuProvider);
           break;
       }
     } catch (e) {
       debugPrint('❌ Error handling menu action: $e');
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: ${e.toString()}'),
@@ -484,7 +329,8 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     }
   }
 
-  Future<void> _handleSaveMenu(MenuProvider provider) async {
+  Future<void> _handleSaveMenu(
+      BuildContext context, MenuProvider provider) async {
     final validation = provider.validateCurrentMenu();
     if (validation != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -519,7 +365,8 @@ class MenuCalculatorScreenState extends State<MenuCalculatorScreen> {
     }
   }
 
-  Future<void> _handleResetCurrent(MenuProvider provider) async {
+  Future<void> _handleResetCurrent(
+      BuildContext context, MenuProvider provider) async {
     final shouldReset = await ConfirmationDialog.show(
       context,
       title: 'Reset Current Menu',

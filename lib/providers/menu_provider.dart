@@ -1,9 +1,10 @@
-// lib/providers/menu_provider.dart - FIXED: Simplified & Type Safe
+// lib/providers/menu_provider.dart - PHASE 1 FIX: Final Consumer (Receives All Updates)
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/menu_model.dart';
 import '../models/shared_calculation_data.dart';
 import '../services/menu_calculator_service.dart';
+import '../services/operational_calculator_service.dart';
 import '../services/storage_service.dart';
 import '../utils/validators.dart';
 import '../utils/constants.dart';
@@ -18,8 +19,9 @@ class MenuProvider with ChangeNotifier {
   MenuCalculationResult? _lastCalculationResult;
   Timer? _autoSaveTimer;
 
-  // Reference to HPP data (read-only)
-  SharedCalculationData? _hppData;
+  // FIXED: Combined data from HPP and Operational (read-only)
+  SharedCalculationData _combinedData = SharedCalculationData();
+  OperationalCalculationResult? _operationalResult;
 
   // Getters
   String get namaMenu => _namaMenu;
@@ -30,19 +32,13 @@ class MenuProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   MenuCalculationResult? get lastCalculationResult => _lastCalculationResult;
 
-  // INITIALIZATION
+  // INITIALIZATION - Only loads menu history
   Future<void> initializeFromStorage() async {
     _setLoading(true);
     try {
-      final savedData = await StorageService.loadSharedData();
-      if (savedData != null) {
-        _hppData = savedData;
-      }
-
       final menuHistory = await StorageService.loadMenuHistory();
       _menuHistory = menuHistory;
 
-      _recalculateMenu();
       debugPrint('✅ Menu Data loaded: ${_menuHistory.length} menu history');
       _setError(null);
     } catch (e) {
@@ -53,25 +49,39 @@ class MenuProvider with ChangeNotifier {
     }
   }
 
-  // FIXED: Simple update from HPP without circular dependency
-  void updateFromHPP(SharedCalculationData hppData) {
+  // FIXED: Receive updates from both HPP and Operational (called by ProxyProvider)
+  void updateFromCalculations({
+    required SharedCalculationData hppData,
+    OperationalCalculationResult? operationalData,
+  }) {
     try {
-      _hppData = hppData;
+      _combinedData = hppData;
+      _operationalResult = operationalData;
+
+      // Update operational data in combined data if available
+      if (operationalData != null && operationalData.isValid) {
+        _combinedData = _combinedData.copyWith(
+          totalOperationalCost: operationalData.totalGajiBulanan,
+          totalHargaSetelahOperational:
+              operationalData.totalHargaSetelahOperational,
+        );
+      }
+
       _recalculateMenu();
     } catch (e) {
-      debugPrint('❌ Error updating from HPP: $e');
+      debugPrint('❌ Error updating menu calculations: $e');
     }
   }
 
   // FIXED: Safe available ingredients with type safety
   List<Map<String, dynamic>> get availableIngredients {
-    if (_hppData == null || _hppData!.variableCosts.isEmpty) {
+    if (_combinedData.variableCosts.isEmpty) {
       return [];
     }
 
     try {
       return MenuCalculatorService.getAvailableIngredients(
-          _hppData!.variableCosts);
+          _combinedData.variableCosts);
     } catch (e) {
       debugPrint('❌ Error getting available ingredients: $e');
       _setError('Error loading ingredient data: ${e.toString()}');
@@ -166,6 +176,10 @@ class MenuProvider with ChangeNotifier {
       _komposisiMenu = [..._komposisiMenu, newComposition];
       _recalculateMenu();
       _setError(null);
+
+      // FIXED: Single notification
+      notifyListeners();
+
       debugPrint('✅ Ingredient added to menu: $namaIngredient');
     } catch (e) {
       _setError('Error adding ingredient: ${e.toString()}');
@@ -187,6 +201,10 @@ class MenuProvider with ChangeNotifier {
 
       _recalculateMenu();
       _setError(null);
+
+      // FIXED: Single notification
+      notifyListeners();
+
       debugPrint('✅ Ingredient removed: $removedName');
     } catch (e) {
       _setError('Error removing ingredient: ${e.toString()}');
@@ -225,6 +243,10 @@ class MenuProvider with ChangeNotifier {
       _lastCalculationResult = null;
 
       _setError(null);
+
+      // FIXED: Single notification
+      notifyListeners();
+
       debugPrint('✅ Menu saved to history: ${menuItem.namaMenu}');
     } catch (e) {
       _setError('Error saving menu: ${e.toString()}');
@@ -244,9 +266,12 @@ class MenuProvider with ChangeNotifier {
 
   // CORE CALCULATION - FIXED: Simple without anti-loop mechanisms
   void _recalculateMenu() {
-    if (_hppData == null ||
-        _komposisiMenu.isEmpty ||
-        _namaMenu.trim().isEmpty) {
+    if (_komposisiMenu.isEmpty || _namaMenu.trim().isEmpty) {
+      _lastCalculationResult = null;
+      return;
+    }
+
+    if (!_combinedData.isValidForCalculation) {
       _lastCalculationResult = null;
       return;
     }
@@ -261,7 +286,7 @@ class MenuProvider with ChangeNotifier {
 
       _lastCalculationResult = MenuCalculatorService.calculateMenuCost(
         menu: menuItem,
-        sharedData: _hppData!,
+        sharedData: _combinedData,
         marginPercentage: _marginPercentage,
       );
     } catch (e) {
@@ -308,7 +333,7 @@ class MenuProvider with ChangeNotifier {
   // HELPER METHODS
   void _setLoading(bool loading) {
     _isLoading = loading;
-    notifyListeners();
+    if (loading) notifyListeners(); // Only notify when starting to load
   }
 
   void _setError(String? error) {
@@ -359,7 +384,7 @@ class MenuProvider with ChangeNotifier {
   bool get hasIngredients => _komposisiMenu.isNotEmpty;
   bool get hasMenuHistory => _menuHistory.isNotEmpty;
   bool get isCalculationReady =>
-      _hppData != null &&
+      _combinedData.isValidForCalculation &&
       _komposisiMenu.isNotEmpty &&
       _namaMenu.trim().isNotEmpty;
   int get ingredientCount => _komposisiMenu.length;

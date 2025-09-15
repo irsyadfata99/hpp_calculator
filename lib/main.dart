@@ -1,4 +1,4 @@
-// lib/main.dart - FIXED: Simplified Architecture
+// lib/main.dart - PHASE 1 FIX: Clean Architecture
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -27,9 +27,31 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // FIXED: Single source of truth - HPP Provider as root
         ChangeNotifierProvider(create: (_) => HPPProvider()),
-        ChangeNotifierProvider(create: (_) => OperationalProvider()),
-        ChangeNotifierProvider(create: (_) => MenuProvider()),
+
+        // FIXED: Operational depends on HPP (unidirectional)
+        ChangeNotifierProxyProvider<HPPProvider, OperationalProvider>(
+          create: (_) => OperationalProvider(),
+          update: (_, hppProvider, operationalProvider) {
+            operationalProvider!.updateFromHPP(hppProvider.data);
+            return operationalProvider;
+          },
+        ),
+
+        // FIXED: Menu depends on both HPP and Operational (unidirectional)
+        ChangeNotifierProxyProvider2<HPPProvider, OperationalProvider,
+            MenuProvider>(
+          create: (_) => MenuProvider(),
+          update: (_, hppProvider, operationalProvider, menuProvider) {
+            // Pass combined data to menu provider
+            menuProvider!.updateFromCalculations(
+              hppData: hppProvider.data,
+              operationalData: operationalProvider.lastCalculationResult,
+            );
+            return menuProvider;
+          },
+        ),
       ],
       child: MaterialApp(
         title: AppConstants.appName,
@@ -60,26 +82,22 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _initializeApp() async {
     try {
+      // FIXED: Simple sequential initialization without complex sync
       await Future.delayed(const Duration(milliseconds: 100));
+
       if (!mounted) return;
 
-      // FIXED: Simple sequential initialization
+      // Initialize providers in order (unidirectional dependency)
       final hppProvider = Provider.of<HPPProvider>(context, listen: false);
-      final operationalProvider =
-          Provider.of<OperationalProvider>(context, listen: false);
-      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
-
       await hppProvider.initializeFromStorage();
-      await operationalProvider.initializeFromStorage();
-      await menuProvider.initializeFromStorage();
 
-      // FIXED: Simple one-time data sync without loops
-      _performSimpleSync(hppProvider, operationalProvider, menuProvider);
+      // Note: Operational and Menu providers will auto-update via ProxyProvider
 
       if (mounted) {
         setState(() {
           _isInitialized = true;
         });
+        debugPrint('✅ App initialized successfully');
       }
     } catch (e) {
       debugPrint('❌ Initialization error: $e');
@@ -88,20 +106,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           _isInitialized = true;
         });
       }
-    }
-  }
-
-  // FIXED: Simple sync without circular dependencies
-  void _performSimpleSync(
-      HPPProvider hpp, OperationalProvider ops, MenuProvider menu) {
-    try {
-      // Only sync if HPP has data
-      if (hpp.data.variableCosts.isNotEmpty) {
-        ops.updateFromHPP(hpp.data);
-        menu.updateFromHPP(hpp.data);
-      }
-    } catch (e) {
-      debugPrint('❌ Sync error: $e');
     }
   }
 
@@ -141,9 +145,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               setState(() {
                 _currentIndex = index;
               });
-              // FIXED: Simple sync on tab switch
-              _performTabSwitchSync(
-                  hppProvider, operationalProvider, menuProvider);
             },
             type: BottomNavigationBarType.fixed,
             items: [
@@ -166,18 +167,6 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         },
       ),
     );
-  }
-
-  void _performTabSwitchSync(
-      HPPProvider hpp, OperationalProvider ops, MenuProvider menu) {
-    try {
-      if (hpp.data.variableCosts.isNotEmpty) {
-        ops.updateFromHPP(hpp.data);
-        menu.updateFromHPP(hpp.data);
-      }
-    } catch (e) {
-      debugPrint('❌ Tab sync error: $e');
-    }
   }
 
   Widget _buildTabIcon(IconData icon, int count) {

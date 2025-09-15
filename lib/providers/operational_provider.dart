@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - FIXED: Simplified without circular dependencies
+// lib/providers/operational_provider.dart - PHASE 1 FIX: Unidirectional Updates Only
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -16,8 +16,8 @@ class OperationalProvider with ChangeNotifier {
   OperationalCalculationResult? _lastCalculationResult;
   Timer? _autoSaveTimer;
 
-  // Reference data from HPP (read-only)
-  SharedCalculationData? _hppData;
+  // FIXED: Reference data from HPP (read-only, no circular updates)
+  SharedCalculationData _hppData = SharedCalculationData();
 
   // Getters
   List<KaryawanData> get karyawan => _karyawan;
@@ -25,17 +25,15 @@ class OperationalProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   OperationalCalculationResult? get lastCalculationResult =>
       _lastCalculationResult;
-  SharedCalculationData? get hppData => _hppData;
+  SharedCalculationData get hppData => _hppData;
 
-  // INITIALIZATION
+  // INITIALIZATION - Only loads own data
   Future<void> initializeFromStorage() async {
     _setLoading(true);
     try {
       final savedData = await StorageService.loadSharedData();
       if (savedData != null) {
         _karyawan = savedData.karyawan;
-        _hppData = savedData;
-        _recalculateOperational();
         debugPrint('✅ Operational Data loaded: ${_karyawan.length} karyawan');
       }
       _setError(null);
@@ -47,12 +45,15 @@ class OperationalProvider with ChangeNotifier {
     }
   }
 
-  // FIXED: Simple update from HPP without circular dependency
+  // FIXED: Receive HPP updates (called by ProxyProvider)
   void updateFromHPP(SharedCalculationData hppData) {
     try {
-      _hppData =
-          hppData.copyWith(karyawan: _karyawan); // Keep our karyawan data
+      // Update reference data but keep our karyawan list
+      _hppData = hppData.copyWith(karyawan: _karyawan);
       _recalculateOperational();
+
+      // Save updated data
+      _scheduleAutoSave();
     } catch (e) {
       debugPrint('❌ Error updating from HPP: $e');
     }
@@ -103,9 +104,17 @@ class OperationalProvider with ChangeNotifier {
       );
 
       _karyawan = [..._karyawan, newKaryawan];
+
+      // Update combined data and recalculate
+      _hppData = _hppData.copyWith(karyawan: _karyawan);
       _recalculateOperational();
+
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification
+      notifyListeners();
+
       debugPrint('✅ Karyawan added: $nama');
     } catch (e) {
       _setError('Error adding karyawan: ${e.toString()}');
@@ -125,9 +134,16 @@ class OperationalProvider with ChangeNotifier {
       final removedName = _karyawan[index].namaKaryawan;
       _karyawan = [..._karyawan]..removeAt(index);
 
+      // Update combined data and recalculate
+      _hppData = _hppData.copyWith(karyawan: _karyawan);
       _recalculateOperational();
+
       _setError(null);
       _scheduleAutoSave();
+
+      // FIXED: Single notification
+      notifyListeners();
+
       debugPrint('✅ Karyawan removed: $removedName');
     } catch (e) {
       _setError('Error removing karyawan: ${e.toString()}');
@@ -138,16 +154,11 @@ class OperationalProvider with ChangeNotifier {
 
   // CORE CALCULATION - FIXED: With division by zero protection
   void _recalculateOperational() {
-    if (_hppData == null) {
-      _lastCalculationResult = null;
-      return;
-    }
-
     try {
       // FIXED: Division by zero protection
-      double estimasiPorsi = _hppData!.estimasiPorsi;
-      double estimasiProduksi = _hppData!.estimasiProduksiBulanan;
-      double hppMurni = _hppData!.hppMurniPerPorsi;
+      double estimasiPorsi = _hppData.estimasiPorsi;
+      double estimasiProduksi = _hppData.estimasiProduksiBulanan;
+      double hppMurni = _hppData.hppMurniPerPorsi;
 
       if (estimasiPorsi <= 0 || estimasiProduksi <= 0) {
         debugPrint('⚠️ Invalid estimation values, skipping calculation');
@@ -165,8 +176,8 @@ class OperationalProvider with ChangeNotifier {
       _lastCalculationResult = result;
 
       if (result.isValid) {
-        // Update our local hpp data copy
-        _hppData = _hppData!.copyWith(
+        // Update our combined data with calculation results
+        _hppData = _hppData.copyWith(
           karyawan: _karyawan,
           totalOperationalCost: result.totalGajiBulanan,
           totalHargaSetelahOperational: result.totalHargaSetelahOperational,
@@ -187,10 +198,8 @@ class OperationalProvider with ChangeNotifier {
   }
 
   Future<void> _performAutoSave() async {
-    if (_hppData == null) return;
-
     try {
-      await StorageService.autoSave(_hppData!);
+      await StorageService.autoSave(_hppData);
       debugPrint('💾 Operational Auto-save completed');
     } catch (e) {
       debugPrint('❌ Operational Auto-save failed: $e');
@@ -213,7 +222,7 @@ class OperationalProvider with ChangeNotifier {
   }
 
   Map<String, dynamic> getProjectionAnalysis() {
-    if (_hppData == null) {
+    if (_hppData.estimasiPorsi <= 0 || _hppData.estimasiProduksiBulanan <= 0) {
       return {
         'isAvailable': false,
         'message': 'Data belum tersedia untuk proyeksi',
@@ -222,15 +231,15 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.calculateOperationalProjection(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _hppData!.estimasiPorsi,
-      estimasiProduksiBulanan: _hppData!.estimasiProduksiBulanan,
+      estimasiPorsiPerProduksi: _hppData.estimasiPorsi,
+      estimasiProduksiBulanan: _hppData.estimasiProduksiBulanan,
     );
   }
 
   // HELPER METHODS
   void _setLoading(bool loading) {
     _isLoading = loading;
-    notifyListeners();
+    if (loading) notifyListeners(); // Only notify when starting to load
   }
 
   void _setError(String? error) {
@@ -249,13 +258,12 @@ class OperationalProvider with ChangeNotifier {
     _errorMessage = null;
     _isLoading = false;
 
-    if (_hppData != null) {
-      _hppData = _hppData!.copyWith(
-        karyawan: _karyawan,
-        totalOperationalCost: 0.0,
-        totalHargaSetelahOperational: _hppData!.hppMurniPerPorsi,
-      );
-    }
+    // Update combined data
+    _hppData = _hppData.copyWith(
+      karyawan: _karyawan,
+      totalOperationalCost: 0.0,
+      totalHargaSetelahOperational: _hppData.hppMurniPerPorsi,
+    );
 
     _scheduleAutoSave();
     notifyListeners();
@@ -267,16 +275,14 @@ class OperationalProvider with ChangeNotifier {
   }
 
   double get operationalCostPerPorsi {
-    if (_hppData == null ||
-        _hppData!.estimasiPorsi <= 0 ||
-        _hppData!.estimasiProduksiBulanan <= 0) {
+    if (_hppData.estimasiPorsi <= 0 || _hppData.estimasiProduksiBulanan <= 0) {
       return 0.0;
     }
 
     return OperationalCalculatorService.calculateOperationalCostPerPorsi(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _hppData!.estimasiPorsi,
-      estimasiProduksiBulanan: _hppData!.estimasiProduksiBulanan,
+      estimasiPorsiPerProduksi: _hppData.estimasiPorsi,
+      estimasiProduksiBulanan: _hppData.estimasiProduksiBulanan,
     );
   }
 
@@ -289,7 +295,8 @@ class OperationalProvider with ChangeNotifier {
   }
 
   bool get hasKaryawan => _karyawan.isNotEmpty;
-  bool get isCalculationReady => _karyawan.isNotEmpty && _hppData != null;
+  bool get isCalculationReady =>
+      _karyawan.isNotEmpty && _hppData.isValidForCalculation;
   int get karyawanCount => _karyawan.length;
 
   @override
