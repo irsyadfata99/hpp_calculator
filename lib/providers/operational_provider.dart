@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - FIXED ANTI-LOOP VERSION
+// lib/providers/operational_provider.dart - FIXED: Simplified without circular dependencies
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -14,18 +14,10 @@ class OperationalProvider with ChangeNotifier {
   String? _errorMessage;
   bool _isLoading = false;
   OperationalCalculationResult? _lastCalculationResult;
-
-  // Auto-save timer
   Timer? _autoSaveTimer;
 
-  // Reference to shared data (will be injected)
-  SharedCalculationData? _sharedData;
-
-  // FIXED: Anti-loop mechanism
-  bool _isCalculating = false;
-  bool _isUpdatingSharedData = false;
-  DateTime? _lastUpdateTime;
-  String? _lastDataHash; // To track actual data changes
+  // Reference data from HPP (read-only)
+  SharedCalculationData? _hppData;
 
   // Getters
   List<KaryawanData> get karyawan => _karyawan;
@@ -33,159 +25,40 @@ class OperationalProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   OperationalCalculationResult? get lastCalculationResult =>
       _lastCalculationResult;
-  SharedCalculationData? get sharedData => _sharedData;
+  SharedCalculationData? get hppData => _hppData;
 
-  // ===============================================
-  // INITIALIZATION WITH STORAGE
-  // ===============================================
-
+  // INITIALIZATION
   Future<void> initializeFromStorage() async {
     _setLoading(true);
     try {
       final savedData = await StorageService.loadSharedData();
       if (savedData != null) {
         _karyawan = savedData.karyawan;
-        _sharedData = savedData;
-        await _recalculateOperational();
-        debugPrint(
-            '✅ Operational Data loaded from storage: ${_karyawan.length} karyawan');
-      } else {
-        debugPrint('ℹ️ No saved operational data found, using defaults');
+        _hppData = savedData;
+        _recalculateOperational();
+        debugPrint('✅ Operational Data loaded: ${_karyawan.length} karyawan');
       }
       _setError(null);
     } catch (e) {
       _setError('Error loading operational data: ${e.toString()}');
-      debugPrint('❌ Error loading operational from storage: $e');
+      debugPrint('❌ Error loading operational: $e');
     } finally {
       _setLoading(false);
     }
   }
 
-  // ===============================================
-  // SHARED DATA INTEGRATION - FIXED WITH ANTI-LOOP MECHANISM
-  // ===============================================
-
-  void updateSharedData(SharedCalculationData newSharedData) {
-    // FIXED: Prevent recursive updates
-    if (_isUpdatingSharedData) {
-      debugPrint('🚫 updateSharedData: Already updating, skipping...');
-      return;
-    }
-
-    // FIXED: Add cooldown period
-    if (_lastUpdateTime != null) {
-      final timeSinceLastUpdate = DateTime.now().difference(_lastUpdateTime!);
-      if (timeSinceLastUpdate.inMilliseconds < 500) {
-        // 500ms cooldown
-        debugPrint('🚫 updateSharedData: Cooldown active, skipping...');
-        return;
-      }
-    }
-
-    // FIXED: Check if data actually changed using hash
-    final newDataHash = _generateDataHash(newSharedData);
-    if (_lastDataHash == newDataHash) {
-      debugPrint('🚫 updateSharedData: No actual data changes, skipping...');
-      return;
-    }
-
+  // FIXED: Simple update from HPP without circular dependency
+  void updateFromHPP(SharedCalculationData hppData) {
     try {
-      _isUpdatingSharedData = true;
-      _lastUpdateTime = DateTime.now();
-      _lastDataHash = newDataHash;
-
-      debugPrint(
-          '🔄 OperationalProvider.updateSharedData called (${_lastUpdateTime})');
-      debugPrint('📊 Data hash: ${newDataHash.substring(0, 8)}...');
-
-      // FIXED: Safe conversion with comprehensive validation
-      _sharedData = SharedCalculationData(
-        variableCosts: newSharedData.variableCosts,
-        fixedCosts: newSharedData.fixedCosts,
-        estimasiPorsi: _ensureDoubleOrDefault(
-            newSharedData.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
-        estimasiProduksiBulanan: _ensureDoubleOrDefault(
-            newSharedData.estimasiProduksiBulanan,
-            AppConstants.defaultEstimasiProduksi),
-        hppMurniPerPorsi:
-            _ensureDoubleOrDefault(newSharedData.hppMurniPerPorsi, 0.0),
-        biayaVariablePerPorsi:
-            _ensureDoubleOrDefault(newSharedData.biayaVariablePerPorsi, 0.0),
-        biayaFixedPerPorsi:
-            _ensureDoubleOrDefault(newSharedData.biayaFixedPerPorsi, 0.0),
-        karyawan: _karyawan, // Use local karyawan data
-        totalOperationalCost:
-            _ensureDoubleOrDefault(newSharedData.totalOperationalCost, 0.0),
-        totalHargaSetelahOperational: _ensureDoubleOrDefault(
-            newSharedData.totalHargaSetelahOperational, 0.0),
-      );
-
-      debugPrint('📊 Updated shared data values:');
-      debugPrint(
-          '  estimasiPorsi: ${_sharedData!.estimasiPorsi} (${_sharedData!.estimasiPorsi.runtimeType})');
-      debugPrint(
-          '  estimasiProduksiBulanan: ${_sharedData!.estimasiProduksiBulanan} (${_sharedData!.estimasiProduksiBulanan.runtimeType})');
-      debugPrint('  karyawan count: ${_karyawan.length}');
-
-      // FIXED: Only recalculate if we have meaningful data
-      if (_shouldRecalculate()) {
-        _recalculateOperational();
-      } else {
-        debugPrint('ℹ️ Skipping recalculation - insufficient data');
-      }
+      _hppData =
+          hppData.copyWith(karyawan: _karyawan); // Keep our karyawan data
+      _recalculateOperational();
     } catch (e) {
-      debugPrint('❌ Error updating shared data: $e');
-      _setError('Error updating shared data: ${e.toString()}');
-    } finally {
-      _isUpdatingSharedData = false;
+      debugPrint('❌ Error updating from HPP: $e');
     }
   }
 
-  // FIXED: Generate hash for data change detection
-  String _generateDataHash(SharedCalculationData data) {
-    return '${data.estimasiPorsi}_${data.estimasiProduksiBulanan}_${data.hppMurniPerPorsi}_${data.variableCosts.length}_${_karyawan.length}';
-  }
-
-  // FIXED: Determine if recalculation is needed
-  bool _shouldRecalculate() {
-    return _sharedData != null &&
-        _sharedData!.estimasiPorsi > 0 &&
-        _sharedData!.estimasiProduksiBulanan > 0 &&
-        !_isCalculating;
-  }
-
-  // FIXED: Enhanced helper method with comprehensive null handling
-  double _ensureDoubleOrDefault(dynamic value, double defaultValue) {
-    if (value == null) return defaultValue;
-
-    try {
-      if (value is double) {
-        return value.isFinite ? value : defaultValue;
-      }
-      if (value is int) {
-        return value.toDouble();
-      }
-      if (value is String) {
-        if (value.trim().isEmpty) return defaultValue;
-        String cleanValue = value.replaceAll(RegExp(r'[^\d\.]'), '');
-        if (cleanValue.isEmpty) return defaultValue;
-
-        final parsed = double.tryParse(cleanValue);
-        if (parsed != null && parsed.isFinite && parsed >= 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      debugPrint('🚨 Error ensuring double: $value -> $e');
-    }
-
-    return defaultValue;
-  }
-
-  // ===============================================
-  // KARYAWAN CRUD METHODS - WITH ENHANCED VALIDATION
-  // ===============================================
-
+  // KARYAWAN CRUD METHODS
   Future<void> addKaryawan(String nama, String jabatan, double gaji) async {
     final namaValidation = InputValidator.validateName(nama);
     if (namaValidation != null) {
@@ -199,14 +72,13 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    final safeGaji = _ensureDoubleOrDefault(gaji, 0.0);
-    final salaryValidation = InputValidator.validateSalaryDirect(safeGaji);
+    final salaryValidation = InputValidator.validateSalaryDirect(gaji);
     if (salaryValidation != null) {
       _setError('Gaji: $salaryValidation');
       return;
     }
 
-    if (safeGaji < AppConstants.minSalary) {
+    if (gaji < AppConstants.minSalary) {
       _setError(
           'Gaji terlalu rendah (minimal ${AppFormatters.formatRupiah(AppConstants.minSalary)})');
       return;
@@ -226,79 +98,17 @@ class OperationalProvider with ChangeNotifier {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         namaKaryawan: nama.trim(),
         jabatan: jabatan.trim(),
-        gajiBulanan: safeGaji,
+        gajiBulanan: gaji,
         createdAt: DateTime.now(),
       );
 
       _karyawan = [..._karyawan, newKaryawan];
-
-      // FIXED: Update shared data with new karyawan list
-      if (_sharedData != null) {
-        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
-      }
-
-      await _recalculateOperational();
+      _recalculateOperational();
       _setError(null);
       _scheduleAutoSave();
       debugPrint('✅ Karyawan added: $nama');
     } catch (e) {
       _setError('Error adding karyawan: ${e.toString()}');
-      debugPrint('❌ Error adding karyawan: $e');
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<void> updateKaryawan(
-      int index, String nama, String jabatan, double gaji) async {
-    if (index < 0 || index >= _karyawan.length) {
-      _setError('Index karyawan tidak valid');
-      return;
-    }
-
-    final namaValidation = InputValidator.validateName(nama);
-    if (namaValidation != null) {
-      _setError('Nama karyawan: $namaValidation');
-      return;
-    }
-
-    final jabatanValidation = InputValidator.validateName(jabatan);
-    if (jabatanValidation != null) {
-      _setError('Jabatan: $jabatanValidation');
-      return;
-    }
-
-    final safeGaji = _ensureDoubleOrDefault(gaji, 0.0);
-    final salaryValidation = InputValidator.validateSalaryDirect(safeGaji);
-    if (salaryValidation != null) {
-      _setError('Gaji: $salaryValidation');
-      return;
-    }
-
-    _setLoading(true);
-    try {
-      final updatedKaryawan = KaryawanData(
-        id: _karyawan[index].id,
-        namaKaryawan: nama.trim(),
-        jabatan: jabatan.trim(),
-        gajiBulanan: safeGaji,
-        createdAt: _karyawan[index].createdAt,
-      );
-
-      final newList = [..._karyawan];
-      newList[index] = updatedKaryawan;
-      _karyawan = newList;
-
-      if (_sharedData != null) {
-        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
-      }
-
-      await _recalculateOperational();
-      _setError(null);
-      _scheduleAutoSave();
-      debugPrint('✅ Karyawan updated: $nama');
-    } catch (e) {
-      _setError('Error updating karyawan: ${e.toString()}');
     } finally {
       _setLoading(false);
     }
@@ -313,15 +123,9 @@ class OperationalProvider with ChangeNotifier {
     _setLoading(true);
     try {
       final removedName = _karyawan[index].namaKaryawan;
-      final newList = [..._karyawan];
-      newList.removeAt(index);
-      _karyawan = newList;
+      _karyawan = [..._karyawan]..removeAt(index);
 
-      if (_sharedData != null) {
-        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
-      }
-
-      await _recalculateOperational();
+      _recalculateOperational();
       _setError(null);
       _scheduleAutoSave();
       debugPrint('✅ Karyawan removed: $removedName');
@@ -332,120 +136,49 @@ class OperationalProvider with ChangeNotifier {
     }
   }
 
-  Future<void> clearAllKaryawan() async {
-    _setLoading(true);
-    try {
-      _karyawan = [];
-
-      if (_sharedData != null) {
-        _sharedData = _sharedData!.copyWith(karyawan: _karyawan);
-      }
-
-      await _recalculateOperational();
-      _setError(null);
-      _scheduleAutoSave();
-      debugPrint('✅ All karyawan cleared');
-    } catch (e) {
-      _setError('Error clearing karyawan: ${e.toString()}');
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  // ===============================================
-  // CORE CALCULATION METHOD - FIXED WITH COMPREHENSIVE ANTI-LOOP
-  // ===============================================
-
-  Future<void> _recalculateOperational() async {
-    // FIXED: Prevent multiple simultaneous calculations
-    if (_isCalculating) {
-      debugPrint('🚫 Calculation already in progress, skipping...');
-      return;
-    }
-
-    if (_sharedData == null) {
-      debugPrint('⚠️ SharedData is null, skipping calculation');
+  // CORE CALCULATION - FIXED: With division by zero protection
+  void _recalculateOperational() {
+    if (_hppData == null) {
       _lastCalculationResult = null;
-      notifyListeners();
       return;
     }
 
     try {
-      _isCalculating = true;
+      // FIXED: Division by zero protection
+      double estimasiPorsi = _hppData!.estimasiPorsi;
+      double estimasiProduksi = _hppData!.estimasiProduksiBulanan;
+      double hppMurni = _hppData!.hppMurniPerPorsi;
 
-      debugPrint(
-          '🧮 OperationalProvider._recalculateOperational called - START');
-
-      double estimasiPorsi = _ensureDoubleOrDefault(
-          _sharedData!.estimasiPorsi, AppConstants.defaultEstimasiPorsi);
-      double estimasiProduksiBulanan = _ensureDoubleOrDefault(
-          _sharedData!.estimasiProduksiBulanan,
-          AppConstants.defaultEstimasiProduksi);
-      double hppMurniPerPorsi =
-          _ensureDoubleOrDefault(_sharedData!.hppMurniPerPorsi, 0.0);
-
-      debugPrint('📊 Input values for calculation:');
-      debugPrint(
-          '  estimasiPorsi: $estimasiPorsi (${estimasiPorsi.runtimeType})');
-      debugPrint(
-          '  estimasiProduksiBulanan: $estimasiProduksiBulanan (${estimasiProduksiBulanan.runtimeType})');
-      debugPrint(
-          '  hppMurniPerPorsi: $hppMurniPerPorsi (${hppMurniPerPorsi.runtimeType})');
-      debugPrint('  karyawan count: ${_karyawan.length}');
-
-      List<KaryawanData> validKaryawan =
-          _karyawan.where((k) => k.isValid).toList();
-      if (validKaryawan.length != _karyawan.length) {
-        debugPrint('⚠️ Some karyawan have invalid data, using only valid ones');
+      if (estimasiPorsi <= 0 || estimasiProduksi <= 0) {
+        debugPrint('⚠️ Invalid estimation values, skipping calculation');
+        _lastCalculationResult = null;
+        return;
       }
 
       final result = OperationalCalculatorService.calculateOperationalCost(
-        karyawan: validKaryawan,
-        hppMurniPerPorsi: hppMurniPerPorsi,
+        karyawan: _karyawan,
+        hppMurniPerPorsi: hppMurni,
         estimasiPorsiPerProduksi: estimasiPorsi,
-        estimasiProduksiBulanan: estimasiProduksiBulanan,
+        estimasiProduksiBulanan: estimasiProduksi,
       );
-
-      debugPrint('✅ Calculation completed:');
-      debugPrint('  result.isValid: ${result.isValid}');
-      if (result.isValid) {
-        debugPrint(
-            '  result.totalGajiBulanan: ${AppFormatters.formatRupiah(result.totalGajiBulanan)}');
-        debugPrint(
-            '  result.operationalCostPerPorsi: ${AppFormatters.formatRupiah(result.operationalCostPerPorsi)}');
-      }
 
       _lastCalculationResult = result;
 
       if (result.isValid) {
-        _sharedData = _sharedData!.copyWith(
-          karyawan: validKaryawan,
-          totalOperationalCost:
-              _ensureDoubleOrDefault(result.totalGajiBulanan, 0.0),
-          totalHargaSetelahOperational:
-              _ensureDoubleOrDefault(result.totalHargaSetelahOperational, 0.0),
+        // Update our local hpp data copy
+        _hppData = _hppData!.copyWith(
+          karyawan: _karyawan,
+          totalOperationalCost: result.totalGajiBulanan,
+          totalHargaSetelahOperational: result.totalHargaSetelahOperational,
         );
-        debugPrint('✅ SharedData updated with calculation results');
-      } else {
-        debugPrint('❌ Calculation failed: ${result.errorMessage}');
       }
-
-      debugPrint('🧮 OperationalProvider._recalculateOperational - COMPLETED');
-      notifyListeners();
     } catch (e) {
       _lastCalculationResult = null;
-      debugPrint('❌ Operational Calculation error: $e');
-      _setError('Calculation error: ${e.toString()}');
-      notifyListeners();
-    } finally {
-      _isCalculating = false;
+      debugPrint('❌ Operational calculation error: $e');
     }
   }
 
-  // ===============================================
-  // AUTO-SAVE FUNCTIONALITY
-  // ===============================================
-
+  // AUTO-SAVE
   void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
@@ -454,21 +187,17 @@ class OperationalProvider with ChangeNotifier {
   }
 
   Future<void> _performAutoSave() async {
-    if (_sharedData == null) return;
+    if (_hppData == null) return;
 
     try {
-      await StorageService.autoSave(_sharedData!);
-      debugPrint(
-          '💾 Operational Auto-save completed: ${_karyawan.length} karyawan');
+      await StorageService.autoSave(_hppData!);
+      debugPrint('💾 Operational Auto-save completed');
     } catch (e) {
       debugPrint('❌ Operational Auto-save failed: $e');
     }
   }
 
-  // ===============================================
-  // ANALYSIS METHODS - FIXED WITH NULL SAFETY
-  // ===============================================
-
+  // ANALYSIS METHODS - FIXED: With null safety
   Map<String, dynamic> getEfficiencyAnalysis() {
     if (_lastCalculationResult == null || !_lastCalculationResult!.isValid) {
       return {
@@ -479,13 +208,12 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.analyzeKaryawanEfficiency(
       karyawan: _karyawan,
-      totalPorsiBulanan: _ensureDoubleOrDefault(
-          _lastCalculationResult!.totalPorsiBulanan, 0.0),
+      totalPorsiBulanan: _lastCalculationResult!.totalPorsiBulanan,
     );
   }
 
   Map<String, dynamic> getProjectionAnalysis() {
-    if (_sharedData == null) {
+    if (_hppData == null) {
       return {
         'isAvailable': false,
         'message': 'Data belum tersedia untuk proyeksi',
@@ -494,18 +222,12 @@ class OperationalProvider with ChangeNotifier {
 
     return OperationalCalculatorService.calculateOperationalProjection(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _ensureDoubleOrDefault(
-          _sharedData!.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
-      estimasiProduksiBulanan: _ensureDoubleOrDefault(
-          _sharedData!.estimasiProduksiBulanan,
-          AppConstants.defaultEstimasiProduksi),
+      estimasiPorsiPerProduksi: _hppData!.estimasiPorsi,
+      estimasiProduksiBulanan: _hppData!.estimasiProduksiBulanan,
     );
   }
 
-  // ===============================================
   // HELPER METHODS
-  // ===============================================
-
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
@@ -527,18 +249,11 @@ class OperationalProvider with ChangeNotifier {
     _errorMessage = null;
     _isLoading = false;
 
-    // FIXED: Reset anti-loop flags
-    _isCalculating = false;
-    _isUpdatingSharedData = false;
-    _lastUpdateTime = null;
-    _lastDataHash = null;
-
-    if (_sharedData != null) {
-      _sharedData = _sharedData!.copyWith(
+    if (_hppData != null) {
+      _hppData = _hppData!.copyWith(
         karyawan: _karyawan,
         totalOperationalCost: 0.0,
-        totalHargaSetelahOperational:
-            _ensureDoubleOrDefault(_sharedData!.hppMurniPerPorsi, 0.0),
+        totalHargaSetelahOperational: _hppData!.hppMurniPerPorsi,
       );
     }
 
@@ -546,24 +261,22 @@ class OperationalProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // ===============================================
-  // UTILITY GETTERS WITH TYPE SAFETY
-  // ===============================================
-
+  // UTILITY GETTERS - FIXED: With division by zero protection
   double get totalGajiBulanan {
     return OperationalCalculatorService.calculateTotalGajiBulanan(_karyawan);
   }
 
   double get operationalCostPerPorsi {
-    if (_sharedData == null) return 0.0;
+    if (_hppData == null ||
+        _hppData!.estimasiPorsi <= 0 ||
+        _hppData!.estimasiProduksiBulanan <= 0) {
+      return 0.0;
+    }
 
     return OperationalCalculatorService.calculateOperationalCostPerPorsi(
       karyawan: _karyawan,
-      estimasiPorsiPerProduksi: _ensureDoubleOrDefault(
-          _sharedData!.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
-      estimasiProduksiBulanan: _ensureDoubleOrDefault(
-          _sharedData!.estimasiProduksiBulanan,
-          AppConstants.defaultEstimasiProduksi),
+      estimasiPorsiPerProduksi: _hppData!.estimasiPorsi,
+      estimasiProduksiBulanan: _hppData!.estimasiProduksiBulanan,
     );
   }
 
@@ -576,23 +289,8 @@ class OperationalProvider with ChangeNotifier {
   }
 
   bool get hasKaryawan => _karyawan.isNotEmpty;
-
-  bool get isCalculationReady {
-    return _karyawan.isNotEmpty && _sharedData != null;
-  }
-
+  bool get isCalculationReady => _karyawan.isNotEmpty && _hppData != null;
   int get karyawanCount => _karyawan.length;
-
-  Map<String, dynamic> get calculationSummary {
-    return {
-      'totalKaryawan': _karyawan.length,
-      'totalGaji': totalGajiBulanan,
-      'operationalPerPorsi': operationalCostPerPorsi,
-      'isValid': _lastCalculationResult?.isValid ?? false,
-      'hasSharedData': _sharedData != null,
-      'lastCalculated': DateTime.now().toIso8601String(),
-    };
-  }
 
   @override
   void dispose() {

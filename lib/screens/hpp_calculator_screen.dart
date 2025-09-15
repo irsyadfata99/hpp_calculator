@@ -1,4 +1,4 @@
-// lib/screens/hpp_calculator_screen.dart - FIXED PROVIDER REFERENCES
+// lib/screens/hpp_calculator_screen.dart - FIXED: Simplified without DataSyncController
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/hpp_provider.dart';
@@ -9,21 +9,10 @@ import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';
-import '../services/data_sync_controller.dart';
 
-class HPPCalculatorScreen extends StatefulWidget {
-  final DataSyncController syncController;
+class HPPCalculatorScreen extends StatelessWidget {
+  const HPPCalculatorScreen({super.key});
 
-  const HPPCalculatorScreen({
-    super.key,
-    required this.syncController,
-  });
-
-  @override
-  HPPCalculatorScreenState createState() => HPPCalculatorScreenState();
-}
-
-class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,17 +71,14 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
                 VariableCostWidget(
                   variableCosts: hppProvider.data.variableCosts,
                   onDataChanged: () {
-                    // FIXED: Notify sync controller when HPP data changes
-                    widget.syncController.onHppDataChanged();
+                    // Data changes handled automatically by provider
                   },
                   onAddItem: (nama, totalHarga, jumlah, satuan) {
                     hppProvider.addVariableCost(
                         nama, totalHarga, jumlah, satuan);
-                    widget.syncController.onHppDataChanged();
                   },
                   onRemoveItem: (index) {
                     hppProvider.removeVariableCost(index);
-                    widget.syncController.onHppDataChanged();
                   },
                 ),
 
@@ -102,15 +88,13 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
                 FixedCostWidget(
                   fixedCosts: hppProvider.data.fixedCosts,
                   onDataChanged: () {
-                    widget.syncController.onHppDataChanged();
+                    // Data changes handled automatically by provider
                   },
                   onAddItem: (jenis, nominal) {
                     hppProvider.addFixedCost(jenis, nominal);
-                    widget.syncController.onHppDataChanged();
                   },
                   onRemoveItem: (index) {
                     hppProvider.removeFixedCost(index);
-                    widget.syncController.onHppDataChanged();
                   },
                 ),
 
@@ -127,12 +111,10 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
                   onEstimasiPorsiChanged: (value) {
                     hppProvider.updateEstimasi(
                         value, hppProvider.data.estimasiProduksiBulanan);
-                    widget.syncController.onHppDataChanged();
                   },
                   onEstimasiProduksiChanged: (value) {
                     hppProvider.updateEstimasi(
                         hppProvider.data.estimasiPorsi, value);
-                    widget.syncController.onHppDataChanged();
                   },
                 ),
 
@@ -349,7 +331,6 @@ class HPPCalculatorScreenState extends State<HPPCalculatorScreen> {
     if (shouldReset == true) {
       try {
         provider.resetData();
-        widget.syncController.onHppDataChanged();
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

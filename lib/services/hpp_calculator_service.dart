@@ -1,5 +1,4 @@
-// File: lib/services/hpp_calculator_service.dart
-
+// lib/services/hpp_calculator_service.dart - FIXED: Safe Calculations with Division by Zero Protection
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import '../utils/formatters.dart';
@@ -26,7 +25,6 @@ class HPPCalculationResult {
     this.errorMessage,
   });
 
-  /// Factory constructor untuk membuat result dengan error
   factory HPPCalculationResult.error(String message) {
     return HPPCalculationResult(
       biayaVariablePerPorsi: 0.0,
@@ -40,7 +38,6 @@ class HPPCalculationResult {
     );
   }
 
-  /// Factory constructor untuk result yang valid
   factory HPPCalculationResult.success({
     required double biayaVariablePerPorsi,
     required double biayaFixedPerPorsi,
@@ -60,49 +57,14 @@ class HPPCalculationResult {
     );
   }
 
-  /// Convert ke Map untuk serialization
-  Map<String, dynamic> toMap() {
-    return {
-      'biayaVariablePerPorsi': biayaVariablePerPorsi,
-      'biayaFixedPerPorsi': biayaFixedPerPorsi,
-      'hppMurniPerPorsi': hppMurniPerPorsi,
-      'totalBiayaBahanBaku': totalBiayaBahanBaku,
-      'totalBiayaFixedBulanan': totalBiayaFixedBulanan,
-      'totalPorsiBulanan': totalPorsiBulanan,
-      'isValid': isValid,
-      'errorMessage': errorMessage,
-    };
-  }
-
-  /// Create from Map untuk deserialization
-  factory HPPCalculationResult.fromMap(Map<String, dynamic> map) {
-    return HPPCalculationResult(
-      biayaVariablePerPorsi: map['biayaVariablePerPorsi']?.toDouble() ?? 0.0,
-      biayaFixedPerPorsi: map['biayaFixedPerPorsi']?.toDouble() ?? 0.0,
-      hppMurniPerPorsi: map['hppMurniPerPorsi']?.toDouble() ?? 0.0,
-      totalBiayaBahanBaku: map['totalBiayaBahanBaku']?.toDouble() ?? 0.0,
-      totalBiayaFixedBulanan: map['totalBiayaFixedBulanan']?.toDouble() ?? 0.0,
-      totalPorsiBulanan: map['totalPorsiBulanan']?.toDouble() ?? 0.0,
-      isValid: map['isValid'] ?? false,
-      errorMessage: map['errorMessage'],
-    );
-  }
-
   @override
   String toString() {
     return 'HPPCalculationResult(isValid: $isValid, hppMurni: ${AppFormatters.formatRupiah(hppMurniPerPorsi)}, error: $errorMessage)';
   }
 }
 
-/// Service class untuk menghitung HPP (Harga Pokok Penjualan)
 class HPPCalculatorService {
-  /// Menghitung HPP berdasarkan rumus yang benar sesuai standar akuntansi:
-  ///
-  /// Rumus 1: Biaya Variabel per Porsi = Total Biaya Bahan Baku ÷ Estimasi Porsi per Produksi
-  /// Rumus 2: Biaya Fixed per Porsi = Total Biaya Fixed Bulanan ÷ Total Porsi Bulanan
-  /// Rumus 3: HPP Murni = Biaya Variabel per Porsi + Biaya Fixed per Porsi
-  ///
-  /// Di mana: Total Porsi Bulanan = Estimasi Porsi per Produksi × Estimasi Produksi per Bulan
+  /// FIXED: Safe HPP calculation with comprehensive division by zero protection
   static HPPCalculationResult calculateHPP({
     required List<Map<String, dynamic>> variableCosts,
     required List<Map<String, dynamic>> fixedCosts,
@@ -110,7 +72,7 @@ class HPPCalculatorService {
     required double estimasiProduksiBulanan,
   }) {
     try {
-      // Validasi input menggunakan integrated validators
+      // FIXED: Comprehensive input validation with division by zero protection
       final validationResult = _validateCalculationInputs(
         estimasiPorsiPerProduksi: estimasiPorsiPerProduksi,
         estimasiProduksiBulanan: estimasiProduksiBulanan,
@@ -120,36 +82,45 @@ class HPPCalculatorService {
         return validationResult;
       }
 
-      // Validasi data lists
+      // Validate data lists
       final dataValidation = _validateDataLists(variableCosts, fixedCosts);
       if (!dataValidation.isValid) {
         return dataValidation;
       }
 
-      // Hitung Total Biaya Bahan Baku (semua variable costs)
+      // Calculate totals safely
       double totalBiayaBahanBaku = _calculateTotalVariableCosts(variableCosts);
-
-      // Hitung Total Biaya Fixed Bulanan
       double totalBiayaFixedBulanan = _calculateTotalFixedCosts(fixedCosts);
 
-      // Rumus 1: Biaya Variabel per Porsi = Total Biaya Bahan Baku ÷ Estimasi Porsi per Produksi
+      // FIXED: Division by zero protection for estimasiPorsiPerProduksi
+      if (estimasiPorsiPerProduksi <= 0) {
+        return HPPCalculationResult.error(
+            'Estimasi porsi per produksi harus lebih dari 0');
+      }
+
+      // Calculate variable cost per portion safely
       double biayaVariablePerPorsi =
           totalBiayaBahanBaku / estimasiPorsiPerProduksi;
 
-      // Hitung Total Porsi Bulanan = Estimasi Porsi per Produksi × Estimasi Produksi per Bulan
+      // Calculate total portions per month safely
       double totalPorsiBulanan =
           estimasiPorsiPerProduksi * estimasiProduksiBulanan;
 
-      // Rumus 2: Biaya Fixed per Porsi = Total Biaya Fixed Bulanan ÷ Total Porsi Bulanan
+      // FIXED: Division by zero protection for totalPorsiBulanan
+      if (totalPorsiBulanan <= 0) {
+        return HPPCalculationResult.error(
+            'Total porsi bulanan harus lebih dari 0');
+      }
+
+      // Calculate fixed cost per portion safely
       double biayaFixedPerPorsi = totalBiayaFixedBulanan / totalPorsiBulanan;
 
-      // Rumus 3: HPP Murni = Biaya Variabel per Porsi + Biaya Fixed per Porsi
+      // Calculate final HPP
       double hppMurniPerPorsi = biayaVariablePerPorsi + biayaFixedPerPorsi;
 
-      // Validasi hasil akhir
+      // FIXED: Validate final result for safety
       if (!_isValidResult(hppMurniPerPorsi)) {
-        return HPPCalculationResult.error(
-            'Hasil perhitungan tidak valid: ${AppFormatters.formatRupiah(hppMurniPerPorsi)}');
+        return HPPCalculationResult.error('Hasil perhitungan tidak valid');
       }
 
       return HPPCalculationResult.success(
@@ -166,34 +137,34 @@ class HPPCalculatorService {
     }
   }
 
-  /// Validasi input parameters menggunakan integrated validators
+  /// FIXED: Enhanced input validation with division by zero protection
   static HPPCalculationResult _validateCalculationInputs({
     required double estimasiPorsiPerProduksi,
     required double estimasiProduksiBulanan,
   }) {
-    // Validasi estimasi porsi per produksi
-    if (estimasiPorsiPerProduksi <= AppConstants.minQuantity) {
-      return HPPCalculationResult.error(AppConstants.errorZeroQuantity
-          .replaceAll('Jumlah', 'Estimasi Porsi per Produksi'));
+    // FIXED: Division by zero protection
+    if (estimasiPorsiPerProduksi <= 0) {
+      return HPPCalculationResult.error(
+          'Estimasi Porsi per Produksi harus lebih dari 0');
     }
 
+    if (estimasiProduksiBulanan <= 0) {
+      return HPPCalculationResult.error(
+          'Estimasi Produksi Bulanan harus lebih dari 0');
+    }
+
+    // Check maximum limits
     if (estimasiPorsiPerProduksi > AppConstants.maxQuantity) {
       return HPPCalculationResult.error(
-          'Estimasi Porsi per Produksi terlalu besar (maksimal ${AppConstants.maxQuantity})');
-    }
-
-    // Validasi estimasi produksi bulanan
-    if (estimasiProduksiBulanan <= AppConstants.minQuantity) {
-      return HPPCalculationResult.error(AppConstants.errorZeroQuantity
-          .replaceAll('Jumlah', 'Estimasi Produksi Bulanan'));
+          'Estimasi porsi terlalu besar (maksimal ${AppConstants.maxQuantity})');
     }
 
     if (estimasiProduksiBulanan > AppConstants.maxQuantity) {
       return HPPCalculationResult.error(
-          'Estimasi Produksi Bulanan terlalu besar (maksimal ${AppConstants.maxQuantity})');
+          'Estimasi produksi terlalu besar (maksimal ${AppConstants.maxQuantity})');
     }
 
-    // Validasi kombinasi yang masuk akal
+    // FIXED: Check for reasonable total portions to prevent overflow
     double totalPorsi = estimasiPorsiPerProduksi * estimasiProduksiBulanan;
     if (totalPorsi > 1000000) {
       // Reasonable limit
@@ -211,12 +182,12 @@ class HPPCalculatorService {
     );
   }
 
-  /// Validasi data lists menggunakan integrated validators
+  /// FIXED: Enhanced data validation
   static HPPCalculationResult _validateDataLists(
     List<Map<String, dynamic>> variableCosts,
     List<Map<String, dynamic>> fixedCosts,
   ) {
-    // Validasi variable costs
+    // Variable costs validation
     if (variableCosts.isEmpty) {
       return HPPCalculationResult.error(
           'Data belanja bahan tidak boleh kosong');
@@ -225,14 +196,14 @@ class HPPCalculatorService {
     for (int i = 0; i < variableCosts.length; i++) {
       final item = variableCosts[i];
 
-      // Validasi nama
+      // Validate name
       final namaValidation =
           InputValidator.validateName(item['nama']?.toString());
       if (namaValidation != null) {
         return HPPCalculationResult.error('Bahan ke-${i + 1}: $namaValidation');
       }
 
-      // Validasi total harga
+      // Validate total price
       final hargaValidation =
           InputValidator.validatePrice(item['totalHarga']?.toString());
       if (hargaValidation != null) {
@@ -240,20 +211,26 @@ class HPPCalculatorService {
             'Bahan "${item['nama']}" ke-${i + 1}: $hargaValidation');
       }
 
-      // Validasi jumlah
+      // Validate quantity - FIXED: Division by zero protection
       final jumlahValidation =
           InputValidator.validateQuantity(item['jumlah']?.toString());
       if (jumlahValidation != null) {
         return HPPCalculationResult.error(
             'Bahan "${item['nama']}" ke-${i + 1}: $jumlahValidation');
       }
+
+      // FIXED: Additional safety check for zero quantity
+      double? jumlah = _parseDouble(item['jumlah']);
+      if (jumlah == null || jumlah <= 0) {
+        return HPPCalculationResult.error(
+            'Jumlah bahan "${item['nama']}" harus lebih dari 0');
+      }
     }
 
-    // Validasi fixed costs (opsional, boleh kosong)
+    // Fixed costs validation (optional)
     for (int i = 0; i < fixedCosts.length; i++) {
       final item = fixedCosts[i];
 
-      // Validasi jenis
       final jenisValidation =
           InputValidator.validateName(item['jenis']?.toString());
       if (jenisValidation != null) {
@@ -261,7 +238,6 @@ class HPPCalculatorService {
             'Biaya tetap ke-${i + 1}: $jenisValidation');
       }
 
-      // Validasi nominal
       final nominalValidation =
           InputValidator.validatePrice(item['nominal']?.toString());
       if (nominalValidation != null) {
@@ -280,7 +256,7 @@ class HPPCalculatorService {
     );
   }
 
-  /// Menghitung total biaya variable costs dengan error handling
+  /// FIXED: Safe calculation of total variable costs
   static double _calculateTotalVariableCosts(
       List<Map<String, dynamic>> variableCosts) {
     if (variableCosts.isEmpty) return 0.0;
@@ -288,27 +264,18 @@ class HPPCalculatorService {
     double total = 0.0;
     for (var item in variableCosts) {
       try {
-        double totalHarga = _parseDouble(item['totalHarga']);
-        if (totalHarga < 0) {
-          print(
-              'Warning: Total harga negatif untuk item ${item['nama']}: $totalHarga');
-          continue;
-        }
-        if (totalHarga > AppConstants.maxPrice) {
-          print(
-              'Warning: Total harga terlalu besar untuk item ${item['nama']}: $totalHarga');
-          continue;
-        }
+        double totalHarga = _parseDouble(item['totalHarga']) ?? 0.0;
+        if (totalHarga < 0) continue;
+        if (totalHarga > AppConstants.maxPrice) continue;
         total += totalHarga;
       } catch (e) {
-        print('Warning: Item variable cost bermasalah: $e');
-        continue;
+        continue; // Skip problematic items
       }
     }
     return total;
   }
 
-  /// Menghitung total fixed costs dengan error handling
+  /// FIXED: Safe calculation of total fixed costs
   static double _calculateTotalFixedCosts(
       List<Map<String, dynamic>> fixedCosts) {
     if (fixedCosts.isEmpty) return 0.0;
@@ -316,41 +283,39 @@ class HPPCalculatorService {
     double total = 0.0;
     for (var item in fixedCosts) {
       try {
-        double nominal = _parseDouble(item['nominal']);
-        if (nominal < 0) {
-          print(
-              'Warning: Nominal negatif untuk item ${item['jenis']}: $nominal');
-          continue;
-        }
-        if (nominal > AppConstants.maxPrice) {
-          print(
-              'Warning: Nominal terlalu besar untuk item ${item['jenis']}: $nominal');
-          continue;
-        }
+        double nominal = _parseDouble(item['nominal']) ?? 0.0;
+        if (nominal < 0) continue;
+        if (nominal > AppConstants.maxPrice) continue;
         total += nominal;
       } catch (e) {
-        print('Warning: Item fixed cost bermasalah: $e');
-        continue;
+        continue; // Skip problematic items
       }
     }
     return total;
   }
 
-  /// Helper untuk parsing double dengan error handling
-  static double _parseDouble(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) {
-      // Clean string dari formatting
-      String cleaned = InputValidator.cleanNumericInput(value);
-      return double.tryParse(cleaned) ?? 0.0;
+  /// FIXED: Safe double parsing
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+
+    try {
+      if (value is double) return value.isFinite ? value : null;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        String cleaned = InputValidator.cleanNumericInput(value);
+        if (cleaned.isEmpty) return null;
+        double? parsed = double.tryParse(cleaned);
+        return (parsed?.isFinite == true) ? parsed : null;
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
-    return 0.0;
   }
 
-  /// Validasi hasil perhitungan akhir
+  /// FIXED: Enhanced result validation
   static bool _isValidResult(double hppMurniPerPorsi) {
-    if (hppMurniPerPorsi.isNaN || hppMurniPerPorsi.isInfinite) {
+    if (!hppMurniPerPorsi.isFinite || hppMurniPerPorsi.isNaN) {
       return false;
     }
     if (hppMurniPerPorsi < 0) {
@@ -362,99 +327,39 @@ class HPPCalculatorService {
     return true;
   }
 
-  /// Menghitung harga per satuan untuk variable cost item
+  /// FIXED: Safe calculation of unit price with division by zero protection
   static double calculateHargaPerSatuan({
     required double totalHarga,
     required double jumlah,
   }) {
-    if (jumlah <= 0) return 0.0;
-    return totalHarga / jumlah;
+    if (jumlah <= 0 || totalHarga < 0) return 0.0;
+
+    try {
+      double result = totalHarga / jumlah;
+      return result.isFinite ? result : 0.0;
+    } catch (e) {
+      return 0.0;
+    }
   }
 
-  /// Format rupiah untuk display menggunakan integrated formatter
+  /// Format rupiah untuk display
   static String formatRupiah(double amount) {
     return AppFormatters.formatRupiah(amount);
   }
 
-  /// Format percentage untuk display menggunakan integrated formatter
+  /// Format percentage untuk display
   static String formatPercentage(double percentage) {
     return AppFormatters.formatPercentage(percentage);
   }
 
-  /// Validasi apakah data input lengkap untuk perhitungan
-  static bool isDataComplete({
-    required List<Map<String, dynamic>> variableCosts,
-    required double estimasiPorsiPerProduksi,
-    required double estimasiProduksiBulanan,
-  }) {
-    return variableCosts.isNotEmpty &&
-        estimasiPorsiPerProduksi > 0 &&
-        estimasiProduksiBulanan > 0;
-  }
-
-  /// Menghitung proyeksi bulanan dengan detail analisis
-  static Map<String, double> calculateMonthlyProjection({
-    required double hppMurniPerPorsi,
-    required double estimasiPorsiPerProduksi,
-    required double estimasiProduksiBulanan,
-  }) {
-    double totalPorsiBulanan =
-        estimasiPorsiPerProduksi * estimasiProduksiBulanan;
-    double totalHPPBulanan = hppMurniPerPorsi * totalPorsiBulanan;
-    double hppPerHari = totalHPPBulanan / 30; // Asumsi 30 hari per bulan
-    double hppPerMinggu = totalHPPBulanan / 4; // Asumsi 4 minggu per bulan
-
-    return {
-      'totalPorsiBulanan': totalPorsiBulanan,
-      'totalHPPBulanan': totalHPPBulanan,
-      'hppPerHari': hppPerHari,
-      'hppPerMinggu': hppPerMinggu,
-      'averageHPPPerPorsi': hppMurniPerPorsi,
-      'produksiPerHari': estimasiProduksiBulanan / 30,
-      'porsiPerHari': totalPorsiBulanan / 30,
-    };
-  }
-
-  /// Analisis profitabilitas berdasarkan HPP
-  static Map<String, dynamic> analyzeProfitability({
-    required double hppMurniPerPorsi,
-    required double targetMarginPercentage,
-  }) {
-    double suggestedPrice =
-        hppMurniPerPorsi * (1 + (targetMarginPercentage / 100));
-    double minimumPrice = hppMurniPerPorsi * 1.1; // Minimum 10% margin
-    double profitPerPorsi = suggestedPrice - hppMurniPerPorsi;
-
-    String profitabilityLevel;
-    if (targetMarginPercentage >= 100) {
-      profitabilityLevel = 'Sangat Tinggi';
-    } else if (targetMarginPercentage >= 50) {
-      profitabilityLevel = 'Tinggi';
-    } else if (targetMarginPercentage >= 25) {
-      profitabilityLevel = 'Sedang';
-    } else if (targetMarginPercentage >= 10) {
-      profitabilityLevel = 'Rendah';
-    } else {
-      profitabilityLevel = 'Sangat Rendah';
-    }
-
-    return {
-      'suggestedPrice': suggestedPrice,
-      'minimumPrice': minimumPrice,
-      'profitPerPorsi': profitPerPorsi,
-      'targetMargin': targetMarginPercentage,
-      'profitabilityLevel': profitabilityLevel,
-      'isViable': targetMarginPercentage >= 10,
-    };
-  }
-
-  /// Calculate break-even point
+  /// FIXED: Safe break-even calculation with division by zero protection
   static Map<String, double> calculateBreakEven({
     required double totalBiayaFixedBulanan,
     required double hargaJualPerPorsi,
     required double biayaVariablePerPorsi,
   }) {
-    if (hargaJualPerPorsi <= biayaVariablePerPorsi) {
+    // FIXED: Division by zero protection
+    if (hargaJualPerPorsi <= biayaVariablePerPorsi || hargaJualPerPorsi <= 0) {
       return {
         'breakEvenPorsi': double.infinity,
         'breakEvenHari': double.infinity,
@@ -462,46 +367,34 @@ class HPPCalculatorService {
       };
     }
 
-    double contributionMargin = hargaJualPerPorsi - biayaVariablePerPorsi;
-    double breakEvenPorsi = totalBiayaFixedBulanan / contributionMargin;
-    double breakEvenHari = breakEvenPorsi / 30; // Per hari
+    try {
+      double contributionMargin = hargaJualPerPorsi - biayaVariablePerPorsi;
 
-    return {
-      'breakEvenPorsi': breakEvenPorsi,
-      'breakEvenHari': breakEvenHari,
-      'contributionMargin': contributionMargin,
-    };
-  }
+      // FIXED: Additional safety check
+      if (contributionMargin <= 0) {
+        return {
+          'breakEvenPorsi': double.infinity,
+          'breakEvenHari': double.infinity,
+          'contributionMargin': 0.0,
+        };
+      }
 
-  /// Validate complete calculation setup
-  static HPPCalculationResult validateCompleteSetup({
-    required List<Map<String, dynamic>> variableCosts,
-    required List<Map<String, dynamic>> fixedCosts,
-    required double estimasiPorsiPerProduksi,
-    required double estimasiProduksiBulanan,
-  }) {
-    // Run full validation without calculation
-    final inputValidation = _validateCalculationInputs(
-      estimasiPorsiPerProduksi: estimasiPorsiPerProduksi,
-      estimasiProduksiBulanan: estimasiProduksiBulanan,
-    );
+      double breakEvenPorsi = totalBiayaFixedBulanan / contributionMargin;
+      double breakEvenHari = breakEvenPorsi / 30; // Per hari
 
-    if (!inputValidation.isValid) {
-      return inputValidation;
+      return {
+        'breakEvenPorsi':
+            breakEvenPorsi.isFinite ? breakEvenPorsi : double.infinity,
+        'breakEvenHari':
+            breakEvenHari.isFinite ? breakEvenHari : double.infinity,
+        'contributionMargin': contributionMargin,
+      };
+    } catch (e) {
+      return {
+        'breakEvenPorsi': double.infinity,
+        'breakEvenHari': double.infinity,
+        'contributionMargin': 0.0,
+      };
     }
-
-    final dataValidation = _validateDataLists(variableCosts, fixedCosts);
-    if (!dataValidation.isValid) {
-      return dataValidation;
-    }
-
-    return HPPCalculationResult.success(
-      biayaVariablePerPorsi: 0.0,
-      biayaFixedPerPorsi: 0.0,
-      hppMurniPerPorsi: 0.0,
-      totalBiayaBahanBaku: 0.0,
-      totalBiayaFixedBulanan: 0.0,
-      totalPorsiBulanan: 0.0,
-    );
   }
 }
