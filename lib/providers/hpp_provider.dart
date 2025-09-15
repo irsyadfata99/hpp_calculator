@@ -1,4 +1,4 @@
-// lib/providers/hpp_provider.dart - CRITICAL FIX: Async State Safety + Anti-Loop
+// lib/providers/hpp_provider.dart - CRITICAL FIX: Race Condition + Async State Safety
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/shared_calculation_data.dart';
@@ -13,32 +13,97 @@ class HPPProvider with ChangeNotifier {
   HPPCalculationResult? _lastCalculationResult;
   Timer? _autoSaveTimer;
 
-  // CRITICAL FIX: Anti-loop & async safety mechanisms
+  // CRITICAL FIX: Enhanced async safety + operation queue
   int _dataVersion = 0;
   bool _isDisposed = false;
   bool _isUpdating = false;
+
+  // CRITICAL FIX: Operation queue to prevent race conditions
+  final List<Future<void> Function()> _operationQueue = [];
+  bool _isProcessingQueue = false;
+  Completer<void>? _currentOperation;
 
   // Getters
   SharedCalculationData get data => _data;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   HPPCalculationResult? get lastCalculationResult => _lastCalculationResult;
-  int get dataVersion => _dataVersion; // CRITICAL FIX: Version tracking
+  int get dataVersion => _dataVersion;
 
-  // CRITICAL FIX: Safe async state mutation wrapper
+  // CRITICAL FIX: Safe async operation with queue system
   Future<T?> _safeAsyncOperation<T>(Future<T> Function() operation) async {
-    if (_isDisposed || _isUpdating) return null;
+    if (_isDisposed) return null;
 
-    _isUpdating = true;
-    try {
-      final result = await operation();
-      if (_isDisposed) return null;
-      return result;
-    } finally {
-      if (!_isDisposed) {
-        _isUpdating = false;
+    // CRITICAL FIX: Create completer for this operation
+    final completer = Completer<T?>();
+
+    // CRITICAL FIX: Add to queue to prevent race conditions
+    _operationQueue.add(() async {
+      if (_isDisposed) {
+        completer.complete(null);
+        return;
+      }
+
+      _isUpdating = true;
+      _currentOperation = Completer<void>();
+
+      try {
+        final result = await operation();
+        if (_isDisposed) {
+          completer.complete(null);
+        } else {
+          completer.complete(result);
+        }
+      } catch (e) {
+        if (!_isDisposed) {
+          debugPrint('❌ HPP Operation error: $e');
+          completer.completeError(e);
+        } else {
+          completer.complete(null);
+        }
+      } finally {
+        if (!_isDisposed) {
+          _isUpdating = false;
+          _currentOperation?.complete();
+          _currentOperation = null;
+        }
+      }
+    });
+
+    // CRITICAL FIX: Process queue if not already processing
+    _processOperationQueue();
+
+    return completer.future;
+  }
+
+  // CRITICAL FIX: Queue processor to handle operations sequentially
+  Future<void> _processOperationQueue() async {
+    if (_isProcessingQueue || _operationQueue.isEmpty || _isDisposed) {
+      return;
+    }
+
+    _isProcessingQueue = true;
+
+    while (_operationQueue.isNotEmpty && !_isDisposed) {
+      final operation = _operationQueue.removeAt(0);
+
+      try {
+        await operation();
+
+        // CRITICAL FIX: Wait for current operation to complete
+        if (_currentOperation != null) {
+          await _currentOperation!.future;
+        }
+
+        // CRITICAL FIX: Small delay to prevent overwhelming
+        await Future.delayed(const Duration(milliseconds: 10));
+      } catch (e) {
+        debugPrint('❌ Queue operation error: $e');
+        // Continue processing other operations
       }
     }
+
+    _isProcessingQueue = false;
   }
 
   // CRITICAL FIX: Safe state update with version increment
@@ -50,10 +115,16 @@ class HPPProvider with ChangeNotifier {
     _recalculateHPP();
   }
 
-  // CRITICAL FIX: Safe notification
+  // CRITICAL FIX: Safe notification with disposal check
   void _notifyListenersSafely() {
     if (_isDisposed || _isUpdating) return;
-    notifyListeners();
+
+    // CRITICAL FIX: Use microtask to prevent immediate recursion
+    scheduleMicrotask(() {
+      if (!_isDisposed) {
+        notifyListeners();
+      }
+    });
   }
 
   // INITIALIZATION
@@ -86,7 +157,7 @@ class HPPProvider with ChangeNotifier {
     }
   }
 
-  // VARIABLE COSTS METHODS - CRITICAL FIX: Async safety
+  // VARIABLE COSTS METHODS - CRITICAL FIX: Queue-based async safety
   Future<void> addVariableCost(
       String nama, double totalHarga, double jumlah, String satuan) async {
     // CRITICAL FIX: Input validation before async operation
@@ -113,7 +184,7 @@ class HPPProvider with ChangeNotifier {
       try {
         if (_isDisposed) return false;
 
-        // CRITICAL FIX: Create new list to avoid mutation
+        // CRITICAL FIX: Create new list to avoid mutation during async
         final newCosts = List<Map<String, dynamic>>.from(_data.variableCosts);
         newCosts.add({
           'nama': nama.trim(),
@@ -177,7 +248,7 @@ class HPPProvider with ChangeNotifier {
     });
   }
 
-  // FIXED COSTS METHODS - CRITICAL FIX: Same async safety pattern
+  // FIXED COSTS METHODS - CRITICAL FIX: Same queue-based pattern
   Future<void> addFixedCost(String jenis, double nominal) async {
     final jenisValidation = InputValidator.validateName(jenis);
     if (jenisValidation != null) {
@@ -256,7 +327,7 @@ class HPPProvider with ChangeNotifier {
     });
   }
 
-  // ESTIMATION METHODS - CRITICAL FIX: Async safety
+  // ESTIMATION METHODS - CRITICAL FIX: Queue-based async safety
   Future<void> updateEstimasi(double porsi, double produksiBulanan) async {
     final porsiValidation = InputValidator.validateQuantity(porsi.toString());
     if (porsiValidation != null) {
@@ -330,13 +401,13 @@ class HPPProvider with ChangeNotifier {
     }
   }
 
-  // AUTO-SAVE - CRITICAL FIX: Disposal safety
+  // AUTO-SAVE - CRITICAL FIX: Queue-aware auto-save
   void _scheduleAutoSave() {
     if (_isDisposed) return;
 
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
-      if (!_isDisposed) {
+      if (!_isDisposed && !_isProcessingQueue) {
         _performAutoSave();
       }
     });
@@ -409,6 +480,12 @@ class HPPProvider with ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true; // CRITICAL FIX: Mark as disposed first
+
+    // CRITICAL FIX: Cancel all pending operations
+    _operationQueue.clear();
+    _currentOperation?.complete();
+    _currentOperation = null;
+
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
     super.dispose();

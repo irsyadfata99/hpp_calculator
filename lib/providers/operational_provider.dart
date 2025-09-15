@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - CRITICAL FIX: Anti-Loop + Async Safety
+// lib/providers/operational_provider.dart - CRITICAL FIX: Race Condition + Async Safety
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -16,12 +16,17 @@ class OperationalProvider with ChangeNotifier {
   OperationalCalculationResult? _lastCalculationResult;
   Timer? _autoSaveTimer;
 
-  // CRITICAL FIX: Anti-loop & async safety mechanisms
+  // CRITICAL FIX: Enhanced async safety + operation queue
   SharedCalculationData _hppData = SharedCalculationData();
   int _dataVersion = 0;
-  int _lastHppVersion = -1; // Track HPP version to prevent loops
+  int _lastHppVersion = -1;
   bool _isDisposed = false;
   bool _isUpdating = false;
+
+  // CRITICAL FIX: Operation queue to prevent race conditions
+  final List<Future<void> Function()> _operationQueue = [];
+  bool _isProcessingQueue = false;
+  Completer<void>? _currentOperation;
 
   // Getters
   List<KaryawanData> get karyawan => _karyawan;
@@ -30,30 +35,95 @@ class OperationalProvider with ChangeNotifier {
   OperationalCalculationResult? get lastCalculationResult =>
       _lastCalculationResult;
   SharedCalculationData get hppData => _hppData;
-  int get dataVersion => _dataVersion; // CRITICAL FIX: Version tracking
-  int get lastHppVersion =>
-      _lastHppVersion; // CRITICAL FIX: HPP version tracking
+  int get dataVersion => _dataVersion;
+  int get lastHppVersion => _lastHppVersion;
 
-  // CRITICAL FIX: Safe async operation wrapper
+  // CRITICAL FIX: Safe async operation with queue system
   Future<T?> _safeAsyncOperation<T>(Future<T> Function() operation) async {
-    if (_isDisposed || _isUpdating) return null;
+    if (_isDisposed) return null;
 
-    _isUpdating = true;
-    try {
-      final result = await operation();
-      if (_isDisposed) return null;
-      return result;
-    } finally {
-      if (!_isDisposed) {
-        _isUpdating = false;
+    // CRITICAL FIX: Create completer for this operation
+    final completer = Completer<T?>();
+
+    // CRITICAL FIX: Add to queue to prevent race conditions
+    _operationQueue.add(() async {
+      if (_isDisposed) {
+        completer.complete(null);
+        return;
       }
-    }
+
+      _isUpdating = true;
+      _currentOperation = Completer<void>();
+
+      try {
+        final result = await operation();
+        if (_isDisposed) {
+          completer.complete(null);
+        } else {
+          completer.complete(result);
+        }
+      } catch (e) {
+        if (!_isDisposed) {
+          debugPrint('❌ Operational Operation error: $e');
+          completer.completeError(e);
+        } else {
+          completer.complete(null);
+        }
+      } finally {
+        if (!_isDisposed) {
+          _isUpdating = false;
+          _currentOperation?.complete();
+          _currentOperation = null;
+        }
+      }
+    });
+
+    // CRITICAL FIX: Process queue if not already processing
+    _processOperationQueue();
+
+    return completer.future;
   }
 
-  // CRITICAL FIX: Safe notification
+  // CRITICAL FIX: Queue processor to handle operations sequentially
+  Future<void> _processOperationQueue() async {
+    if (_isProcessingQueue || _operationQueue.isEmpty || _isDisposed) {
+      return;
+    }
+
+    _isProcessingQueue = true;
+
+    while (_operationQueue.isNotEmpty && !_isDisposed) {
+      final operation = _operationQueue.removeAt(0);
+
+      try {
+        await operation();
+
+        // CRITICAL FIX: Wait for current operation to complete
+        if (_currentOperation != null) {
+          await _currentOperation!.future;
+        }
+
+        // CRITICAL FIX: Small delay to prevent overwhelming
+        await Future.delayed(const Duration(milliseconds: 10));
+      } catch (e) {
+        debugPrint('❌ Operational Queue operation error: $e');
+        // Continue processing other operations
+      }
+    }
+
+    _isProcessingQueue = false;
+  }
+
+  // CRITICAL FIX: Safe notification with disposal check
   void _notifyListenersSafely() {
     if (_isDisposed || _isUpdating) return;
-    notifyListeners();
+
+    // CRITICAL FIX: Use microtask to prevent immediate recursion
+    scheduleMicrotask(() {
+      if (!_isDisposed) {
+        notifyListeners();
+      }
+    });
   }
 
   // INITIALIZATION
@@ -83,40 +153,47 @@ class OperationalProvider with ChangeNotifier {
     });
   }
 
-  // CRITICAL FIX: Anti-loop HPP update mechanism
+  // CRITICAL FIX: Anti-loop HPP update mechanism with queue protection
   void updateFromHPP(SharedCalculationData hppData, int hppVersion) {
-    if (_isDisposed || _isUpdating) return;
+    if (_isDisposed || _isUpdating || _isProcessingQueue) return;
 
     // CRITICAL FIX: Only update if HPP version actually changed
     if (_lastHppVersion == hppVersion) {
       return; // Prevent loop - already processed this version
     }
 
-    try {
-      _isUpdating = true;
+    // CRITICAL FIX: Add HPP update to queue to prevent race with other operations
+    _operationQueue.add(() async {
+      if (_isDisposed) return;
 
-      // Update reference data but keep our karyawan list
-      _hppData = hppData.copyWith(karyawan: _karyawan);
-      _lastHppVersion = hppVersion;
-      _dataVersion++;
+      try {
+        _isUpdating = true;
 
-      _recalculateOperational();
-      _scheduleAutoSave();
+        // Update reference data but keep our karyawan list
+        _hppData = hppData.copyWith(karyawan: _karyawan);
+        _lastHppVersion = hppVersion;
+        _dataVersion++;
 
-      debugPrint('✅ Operational updated from HPP version $hppVersion');
-    } catch (e) {
-      if (!_isDisposed) {
-        debugPrint('❌ Error updating from HPP: $e');
+        _recalculateOperational();
+        _scheduleAutoSave();
+
+        debugPrint('✅ Operational updated from HPP version $hppVersion');
+      } catch (e) {
+        if (!_isDisposed) {
+          debugPrint('❌ Error updating from HPP: $e');
+        }
+      } finally {
+        _isUpdating = false;
+        if (!_isDisposed) {
+          _notifyListenersSafely();
+        }
       }
-    } finally {
-      _isUpdating = false;
-      if (!_isDisposed) {
-        _notifyListenersSafely();
-      }
-    }
+    });
+
+    _processOperationQueue();
   }
 
-  // KARYAWAN CRUD METHODS - CRITICAL FIX: Async safety
+  // KARYAWAN CRUD METHODS - CRITICAL FIX: Queue-based async safety
   Future<void> addKaryawan(String nama, String jabatan, double gaji) async {
     // CRITICAL FIX: Validate inputs before async operation
     final namaValidation = InputValidator.validateName(nama);
@@ -165,7 +242,7 @@ class OperationalProvider with ChangeNotifier {
           createdAt: DateTime.now(),
         );
 
-        // CRITICAL FIX: Create new list to avoid mutation
+        // CRITICAL FIX: Create new list to avoid mutation during async
         _karyawan = [..._karyawan, newKaryawan];
 
         if (!_isDisposed) {
@@ -281,13 +358,13 @@ class OperationalProvider with ChangeNotifier {
     }
   }
 
-  // AUTO-SAVE - CRITICAL FIX: Disposal safety
+  // AUTO-SAVE - CRITICAL FIX: Queue-aware auto-save
   void _scheduleAutoSave() {
     if (_isDisposed) return;
 
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
-      if (!_isDisposed) {
+      if (!_isDisposed && !_isProcessingQueue) {
         _performAutoSave();
       }
     });
@@ -417,6 +494,12 @@ class OperationalProvider with ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true; // CRITICAL FIX: Mark as disposed first
+
+    // CRITICAL FIX: Cancel all pending operations
+    _operationQueue.clear();
+    _currentOperation?.complete();
+    _currentOperation = null;
+
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
     super.dispose();

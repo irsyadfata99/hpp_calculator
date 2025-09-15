@@ -1,4 +1,4 @@
-// lib/providers/menu_provider.dart - FIXED: InputValidator Compatibility + Anti-Loop
+// lib/providers/menu_provider.dart - CRITICAL FIX: Race Condition + Anti-Loop
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/menu_model.dart';
@@ -19,13 +19,18 @@ class MenuProvider with ChangeNotifier {
   MenuCalculationResult? _lastCalculationResult;
   Timer? _autoSaveTimer;
 
-  // CRITICAL FIX: Anti-loop & debouncing mechanisms
+  // CRITICAL FIX: Enhanced async safety + operation queue
   SharedCalculationData _combinedData = SharedCalculationData();
   int _lastHppVersion = -1;
   int _lastOpVersion = -1;
   bool _isDisposed = false;
   bool _isUpdating = false;
   Timer? _updateDebounceTimer;
+
+  // CRITICAL FIX: Operation queue to prevent race conditions
+  final List<Future<void> Function()> _operationQueue = [];
+  bool _isProcessingQueue = false;
+  Completer<void>? _currentOperation;
 
   // Getters
   String get namaMenu => _namaMenu;
@@ -38,26 +43,92 @@ class MenuProvider with ChangeNotifier {
   int get lastHppVersion => _lastHppVersion;
   int get lastOpVersion => _lastOpVersion;
 
-  // CRITICAL FIX: Safe async operation wrapper
+  // CRITICAL FIX: Safe async operation with queue system
   Future<T?> _safeAsyncOperation<T>(Future<T> Function() operation) async {
-    if (_isDisposed || _isUpdating) return null;
+    if (_isDisposed) return null;
 
-    _isUpdating = true;
-    try {
-      final result = await operation();
-      if (_isDisposed) return null;
-      return result;
-    } finally {
-      if (!_isDisposed) {
-        _isUpdating = false;
+    // CRITICAL FIX: Create completer for this operation
+    final completer = Completer<T?>();
+
+    // CRITICAL FIX: Add to queue to prevent race conditions
+    _operationQueue.add(() async {
+      if (_isDisposed) {
+        completer.complete(null);
+        return;
       }
-    }
+
+      _isUpdating = true;
+      _currentOperation = Completer<void>();
+
+      try {
+        final result = await operation();
+        if (_isDisposed) {
+          completer.complete(null);
+        } else {
+          completer.complete(result);
+        }
+      } catch (e) {
+        if (!_isDisposed) {
+          debugPrint('❌ Menu Operation error: $e');
+          completer.completeError(e);
+        } else {
+          completer.complete(null);
+        }
+      } finally {
+        if (!_isDisposed) {
+          _isUpdating = false;
+          _currentOperation?.complete();
+          _currentOperation = null;
+        }
+      }
+    });
+
+    // CRITICAL FIX: Process queue if not already processing
+    _processOperationQueue();
+
+    return completer.future;
   }
 
-  // CRITICAL FIX: Safe notification
+  // CRITICAL FIX: Queue processor to handle operations sequentially
+  Future<void> _processOperationQueue() async {
+    if (_isProcessingQueue || _operationQueue.isEmpty || _isDisposed) {
+      return;
+    }
+
+    _isProcessingQueue = true;
+
+    while (_operationQueue.isNotEmpty && !_isDisposed) {
+      final operation = _operationQueue.removeAt(0);
+
+      try {
+        await operation();
+
+        // CRITICAL FIX: Wait for current operation to complete
+        if (_currentOperation != null) {
+          await _currentOperation!.future;
+        }
+
+        // CRITICAL FIX: Small delay to prevent overwhelming
+        await Future.delayed(const Duration(milliseconds: 10));
+      } catch (e) {
+        debugPrint('❌ Menu Queue operation error: $e');
+        // Continue processing other operations
+      }
+    }
+
+    _isProcessingQueue = false;
+  }
+
+  // CRITICAL FIX: Safe notification with disposal check
   void _notifyListenersSafely() {
     if (_isDisposed || _isUpdating) return;
-    notifyListeners();
+
+    // CRITICAL FIX: Use microtask to prevent immediate recursion
+    scheduleMicrotask(() {
+      if (!_isDisposed) {
+        notifyListeners();
+      }
+    });
   }
 
   // INITIALIZATION
@@ -86,32 +157,39 @@ class MenuProvider with ChangeNotifier {
     });
   }
 
-  // CRITICAL FIX: Debounced update mechanism to prevent loops
+  // CRITICAL FIX: Enhanced debounced update mechanism to prevent loops + queue protection
   void scheduleUpdate({
     required SharedCalculationData hppData,
     required int hppVersion,
     OperationalCalculationResult? operationalData,
     required int opVersion,
   }) {
-    if (_isDisposed) return;
+    if (_isDisposed || _isProcessingQueue) return;
 
     // CRITICAL FIX: Cancel previous update timer
     _updateDebounceTimer?.cancel();
 
-    // CRITICAL FIX: Debounce rapid updates (300ms delay)
-    _updateDebounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (!_isDisposed) {
-        _performUpdate(
-          hppData: hppData,
-          hppVersion: hppVersion,
-          operationalData: operationalData,
-          opVersion: opVersion,
-        );
+    // CRITICAL FIX: Enhanced debounce with longer delay to prevent cascading updates
+    _updateDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!_isDisposed && !_isProcessingQueue) {
+        // CRITICAL FIX: Add to queue instead of direct execution
+        _operationQueue.add(() async {
+          if (_isDisposed) return;
+
+          _performUpdate(
+            hppData: hppData,
+            hppVersion: hppVersion,
+            operationalData: operationalData,
+            opVersion: opVersion,
+          );
+        });
+
+        _processOperationQueue();
       }
     });
   }
 
-  // CRITICAL FIX: Actual update method with anti-loop protection
+  // CRITICAL FIX: Actual update method with enhanced anti-loop protection
   void _performUpdate({
     required SharedCalculationData hppData,
     required int hppVersion,
@@ -129,6 +207,19 @@ class MenuProvider with ChangeNotifier {
 
       if (!hppChanged && !opChanged) {
         return; // No actual changes - prevent unnecessary updates
+      }
+
+      // CRITICAL FIX: Additional protection against rapid version changes
+      if (hppChanged && (hppVersion - _lastHppVersion) > 5) {
+        debugPrint(
+            '⚠️ Large HPP version jump detected, potential loop - throttling');
+        return;
+      }
+
+      if (opChanged && (opVersion - _lastOpVersion) > 5) {
+        debugPrint(
+            '⚠️ Large Operational version jump detected, potential loop - throttling');
+        return;
       }
 
       _combinedData = hppData;
@@ -160,7 +251,7 @@ class MenuProvider with ChangeNotifier {
     }
   }
 
-  // FIXED: Safe available ingredients with disposal check
+  // CRITICAL FIX: Safe available ingredients with disposal check
   List<Map<String, dynamic>> get availableIngredients {
     if (_isDisposed || _combinedData.variableCosts.isEmpty) {
       return [];
@@ -178,7 +269,7 @@ class MenuProvider with ChangeNotifier {
     }
   }
 
-  // MENU INPUT METHODS - FIXED: InputValidator compatibility
+  // MENU INPUT METHODS - CRITICAL FIX: Queue-based async safety
   Future<void> updateNamaMenu(String nama) async {
     final namaValidation = InputValidator.validateName(nama);
     if (namaValidation != null && nama.isNotEmpty) {
@@ -194,9 +285,14 @@ class MenuProvider with ChangeNotifier {
     _notifyListenersSafely();
   }
 
-  // FIXED: Use direct margin validation instead of string conversion
+  // CRITICAL FIX: Use direct margin validation instead of string conversion
   Future<void> updateMarginPercentage(double margin) async {
-    // FIXED: Call validateMargin directly with double
+    // CRITICAL FIX: Enhanced validation with range check
+    if (margin.isNaN || margin.isInfinite) {
+      _setError('Margin tidak valid');
+      return;
+    }
+
     final marginValidation = InputValidator.validateMargin(margin);
     if (marginValidation != null) {
       _setError('Margin: $marginValidation');
@@ -211,10 +307,10 @@ class MenuProvider with ChangeNotifier {
     _notifyListenersSafely();
   }
 
-  // MENU COMPOSITION CRUD - FIXED: InputValidator compatibility
+  // MENU COMPOSITION CRUD - CRITICAL FIX: Queue-based async safety
   Future<void> addIngredient(String namaIngredient, double jumlahDipakai,
       String satuan, double hargaPerSatuan) async {
-    // FIXED: Validate inputs with correct method signatures
+    // CRITICAL FIX: Enhanced input validation
     final namaValidation = InputValidator.validateName(namaIngredient);
     if (namaValidation != null) {
       _setError('Nama ingredient: $namaValidation');
@@ -228,7 +324,7 @@ class MenuProvider with ChangeNotifier {
       return;
     }
 
-    // FIXED: Enhanced validation for unit prices with proper bounds checking
+    // CRITICAL FIX: Enhanced validation for unit prices with proper bounds checking
     if (!hargaPerSatuan.isFinite || hargaPerSatuan.isNaN) {
       _setError('Harga per satuan tidak valid');
       return;
@@ -330,7 +426,7 @@ class MenuProvider with ChangeNotifier {
     });
   }
 
-  // MENU MANAGEMENT - CRITICAL FIX: Async safety
+  // MENU MANAGEMENT - CRITICAL FIX: Queue-based async safety
   Future<void> saveCurrentMenu() async {
     if (_namaMenu.trim().isEmpty) {
       _setError('Nama menu tidak boleh kosong');
@@ -544,10 +640,17 @@ class MenuProvider with ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true; // CRITICAL FIX: Mark as disposed first
+
+    // CRITICAL FIX: Cancel all pending operations and timers
+    _operationQueue.clear();
+    _currentOperation?.complete();
+    _currentOperation = null;
+
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
     _updateDebounceTimer?.cancel(); // CRITICAL FIX: Cancel debounce timer
     _updateDebounceTimer = null;
+
     super.dispose();
   }
 }
