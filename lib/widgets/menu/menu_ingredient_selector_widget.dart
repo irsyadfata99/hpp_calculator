@@ -1,7 +1,7 @@
-// lib/widgets/menu/menu_ingredient_selector_widget.dart - PHASE 1.5 FIX: No Debug Spam
+// File: lib/widgets/menu/menu_ingredient_selector_widget.dart (WORKING VERSION - Bug #17 Fixed)
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../services/universal_unit_service.dart';
 
 class MenuIngredientSelectorWidget extends StatefulWidget {
   final List<Map<String, dynamic>> availableIngredients;
@@ -24,20 +24,45 @@ class MenuIngredientSelectorWidgetState
   String _selectedSatuan = '%';
   final _jumlahController = TextEditingController();
 
-  // FIXED: Remove debug mode completely
-  List<Map<String, dynamic>>? _cachedUniqueIngredients;
+  // Cache untuk mencegah rebuild yang tidak perlu
+  List<Map<String, dynamic>>? _cachedIngredients;
+  int _ingredientHashCode = 0;
 
   @override
   void initState() {
     super.initState();
-    _cacheUniqueIngredients();
+    _updateIngredientCache();
   }
 
+  // 🔧 FIX UNTUK BUG #17: Cache Invalidation - WORKING VERSION
   @override
   void didUpdateWidget(MenuIngredientSelectorWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.availableIngredients != widget.availableIngredients) {
-      _cacheUniqueIngredients();
+
+    // Check if availableIngredients has changed
+    if (_hasIngredientsChanged(
+        oldWidget.availableIngredients, widget.availableIngredients)) {
+      debugPrint(
+          '🔄 MenuIngredientSelector: Ingredients changed, refreshing cache');
+
+      // Reset form jika ingredient yang dipilih sudah tidak ada
+      if (_selectedIngredient != null) {
+        bool ingredientStillExists = widget.availableIngredients
+            .any((ingredient) => ingredient['nama'] == _selectedIngredient);
+
+        if (!ingredientStillExists) {
+          debugPrint('⚠️ Selected ingredient no longer exists, resetting form');
+          _resetForm();
+        }
+      }
+
+      // Update cache
+      _updateIngredientCache();
+
+      // Force rebuild untuk memperbarui dropdown
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -47,156 +72,407 @@ class MenuIngredientSelectorWidgetState
     super.dispose();
   }
 
-  // FIXED: Cache unique ingredients to prevent repeated processing
-  void _cacheUniqueIngredients() {
-    final Map<String, Map<String, dynamic>> uniqueMap = {};
+  // Helper method untuk update cache
+  void _updateIngredientCache() {
+    _cachedIngredients =
+        List<Map<String, dynamic>>.from(widget.availableIngredients);
+    _ingredientHashCode = widget.availableIngredients.hashCode;
+  }
 
-    for (var ingredient in widget.availableIngredients) {
-      try {
-        String nama = ingredient['nama']?.toString() ?? 'Unknown';
-        if (nama.trim().isEmpty || nama == 'Unknown') continue;
+  // Helper method untuk check perubahan ingredients
+  bool _hasIngredientsChanged(
+    List<Map<String, dynamic>> oldIngredients,
+    List<Map<String, dynamic>> newIngredients,
+  ) {
+    if (oldIngredients.length != newIngredients.length) {
+      return true;
+    }
 
-        double jumlah = (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
-        String satuan = ingredient['satuan']?.toString() ?? 'unit';
-        double totalHarga =
-            (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
+    // Check hash code dulu untuk performa
+    int newHashCode = newIngredients.hashCode;
+    if (_ingredientHashCode != newHashCode) {
+      return true;
+    }
 
-        if (jumlah <= 0 || totalHarga <= 0) continue;
+    // Deep comparison jika hash sama tapi perlu memastikan
+    for (int i = 0; i < oldIngredients.length; i++) {
+      final oldItem = oldIngredients[i];
+      final newItem = newIngredients[i];
 
-        String uniqueKey = '${nama}_${jumlah}_${satuan}_${totalHarga.toInt()}';
-
-        if (!uniqueMap.containsKey(uniqueKey)) {
-          uniqueMap[uniqueKey] = ingredient;
-        }
-      } catch (e) {
-        // Skip invalid ingredients silently
-        continue;
+      if (oldItem['nama'] != newItem['nama'] ||
+          oldItem['totalHarga'] != newItem['totalHarga'] ||
+          oldItem['jumlah'] != newItem['jumlah'] ||
+          oldItem['satuan'] != newItem['satuan']) {
+        return true;
       }
     }
 
-    _cachedUniqueIngredients = uniqueMap.values.toList();
+    return false;
   }
 
-  List<Map<String, dynamic>> get _uniqueIngredients {
-    return _cachedUniqueIngredients ?? [];
+  void _resetForm() {
+    if (mounted) {
+      setState(() {
+        _selectedIngredient = null;
+        _selectedSatuan = '%';
+      });
+      _jumlahController.clear();
+    }
   }
 
-  // FIXED: Simplified cost calculation without excessive logging
+  // Calculate cost berdasarkan mode yang dipilih - SIMPLIFIED VERSION
   double _calculateCost() {
     if (_selectedIngredient == null || _jumlahController.text.isEmpty) {
       return 0.0;
     }
 
     try {
-      final ingredient = _uniqueIngredients.firstWhere(
-        (item) => item['nama']?.toString() == _selectedIngredient,
+      // Gunakan cached ingredients untuk performa
+      var ingredient =
+          (_cachedIngredients ?? widget.availableIngredients).firstWhere(
+        (item) => item['nama'] == _selectedIngredient,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (ingredient.isEmpty) {
+        debugPrint('⚠️ Warning: Selected ingredient not found in cache');
+        return 0.0;
+      }
+
+      double jumlah = double.tryParse(_jumlahController.text) ?? 0;
+      double totalHarga = ingredient['totalHarga']?.toDouble() ?? 0;
+      double packageQuantity = ingredient['jumlah']?.toDouble() ?? 1;
+
+      if (totalHarga <= 0 || packageQuantity <= 0 || jumlah <= 0) {
+        return 0.0;
+      }
+
+      if (_selectedSatuan == '%') {
+        // Percentage mode: (totalHarga * percentage) / 100
+        if (jumlah > 100) jumlah = 100; // Cap at 100%
+        return (totalHarga * jumlah) / 100;
+      } else {
+        // Unit mode: (totalHarga / packageQuantity) * unitsUsed
+        return (totalHarga / packageQuantity) * jumlah;
+      }
+    } catch (e) {
+      debugPrint('❌ Error calculating cost: $e');
+      return 0.0;
+    }
+  }
+
+  // Get unit price untuk reference - SIMPLIFIED
+  double _getUnitPrice() {
+    if (_selectedIngredient == null) return 0.0;
+
+    try {
+      var ingredient =
+          (_cachedIngredients ?? widget.availableIngredients).firstWhere(
+        (item) => item['nama'] == _selectedIngredient,
         orElse: () => <String, dynamic>{},
       );
 
       if (ingredient.isEmpty) return 0.0;
 
-      double jumlah = double.tryParse(_jumlahController.text) ?? 0;
-      if (jumlah <= 0) return 0.0;
-
-      double totalHarga = (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
-      double packageQuantity =
-          (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
-      String packageUnit = ingredient['satuan']?.toString() ?? 'unit';
+      double totalHarga = ingredient['totalHarga']?.toDouble() ?? 0;
+      double packageQuantity = ingredient['jumlah']?.toDouble() ?? 1;
 
       if (totalHarga <= 0 || packageQuantity <= 0) return 0.0;
 
-      CalculationResult result = UniversalUnitService.calculateSmartCost(
-        totalPrice: totalHarga,
-        packageQuantity: packageQuantity,
-        packageUnit: packageUnit,
-        usageAmount: jumlah,
-        usageUnit: _selectedSatuan,
-      );
-
-      return result.isSuccess ? result.cost : 0.0;
+      return totalHarga / packageQuantity;
     } catch (e) {
+      debugPrint('❌ Error getting unit price: $e');
       return 0.0;
     }
   }
 
+  // Build helper info berdasarkan mode
+  Widget _buildCalculationHelper() {
+    if (_selectedIngredient == null) return const SizedBox.shrink();
+
+    var ingredient =
+        (_cachedIngredients ?? widget.availableIngredients).firstWhere(
+      (item) => item['nama'] == _selectedIngredient,
+      orElse: () => <String, dynamic>{},
+    );
+
+    if (ingredient.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.orange[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange[200]!),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange, size: 16),
+            SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Ingredient yang dipilih tidak lagi tersedia. Silakan pilih yang lain.',
+                style: TextStyle(fontSize: 12, color: Colors.orange),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_selectedSatuan == '%') {
+      return _buildPercentageHelper(ingredient);
+    } else {
+      return _buildUnitHelper(ingredient);
+    }
+  }
+
+  Widget _buildPercentageHelper(Map<String, dynamic> ingredient) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.percent, color: Colors.blue[700], size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Mode Persentase (Cocok untuk semua UMKM)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Total belanja: ${_formatRupiah(ingredient['totalHarga'])}',
+            style: TextStyle(fontSize: 11, color: Colors.blue[700]),
+          ),
+          Text(
+            'Contoh: 5% = ${_formatRupiah((ingredient['totalHarga']?.toDouble() ?? 0) * 0.05)}',
+            style: TextStyle(fontSize: 11, color: Colors.blue[600]),
+          ),
+
+          // Real-time calculation
+          if (_jumlahController.text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Biaya: ${_formatRupiah(_calculateCost())}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.blue[800],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnitHelper(Map<String, dynamic> ingredient) {
+    double unitPrice = _getUnitPrice();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.straighten, color: Colors.green[700], size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Mode Unit Langsung',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Harga per ${ingredient['satuan']}: ${_formatRupiah(unitPrice)}',
+            style: TextStyle(fontSize: 11, color: Colors.green[700]),
+          ),
+
+          // Real-time calculation
+          if (_jumlahController.text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Biaya: ${_formatRupiah(_calculateCost())}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.green[800],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Build validation warning - SIMPLIFIED
+  Widget _buildValidationWarning() {
+    if (_selectedSatuan != '%' || _jumlahController.text.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    double percentage = double.tryParse(_jumlahController.text) ?? 0;
+
+    String? warningMessage;
+    Color warningColor = Colors.orange;
+
+    if (percentage <= 0) {
+      warningMessage = 'Persentase harus lebih dari 0%';
+      warningColor = Colors.red;
+    } else if (percentage > 100) {
+      warningMessage = 'Persentase lebih dari 100% - pastikan ini benar';
+      warningColor = Colors.orange;
+    } else if (percentage > 50) {
+      warningMessage = 'Persentase cukup tinggi - pastikan sesuai kebutuhan';
+      warningColor = Colors.orange;
+    }
+
+    if (warningMessage != null) {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color:
+              warningColor == Colors.red ? Colors.red[50] : Colors.orange[50],
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: warningColor == Colors.red
+                ? Colors.red[300]!
+                : Colors.orange[300]!,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              warningColor == Colors.red ? Icons.error : Icons.warning,
+              color: warningColor == Colors.red
+                  ? Colors.red[600]
+                  : Colors.orange[600],
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                warningMessage,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: warningColor == Colors.red
+                      ? Colors.red[700]
+                      : Colors.orange[700],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   void _addIngredient() {
-    try {
-      if (_selectedIngredient == null) {
-        _showError('Please select an ingredient');
-        return;
-      }
-
-      if (_jumlahController.text.isEmpty) {
-        _showError('Please enter quantity');
-        return;
-      }
-
+    if (_selectedIngredient != null && _jumlahController.text.isNotEmpty) {
       double? jumlah = double.tryParse(_jumlahController.text);
-      if (jumlah == null || jumlah <= 0) {
-        _showError('Please enter valid quantity');
-        return;
+      if (jumlah != null && jumlah > 0) {
+        // Basic validation untuk percentage
+        if (_selectedSatuan == '%') {
+          if (jumlah > 100) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Persentase tidak boleh lebih dari 100%'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+        }
+
+        double cost = _calculateCost();
+        if (cost <= 0) {
+          debugPrint('⚠️ Cannot add ingredient with zero or negative cost');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('Tidak dapat menambahkan ingredient dengan biaya nol'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        double unitPrice = cost / jumlah; // Price per unit yang dipakai
+
+        try {
+          widget.onAddIngredient(
+            _selectedIngredient!,
+            jumlah,
+            _selectedSatuan,
+            unitPrice,
+          );
+
+          debugPrint('✅ Ingredient added successfully: $_selectedIngredient');
+
+          // Show success feedback
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ $_selectedIngredient berhasil ditambahkan'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          _resetForm();
+        } catch (e) {
+          debugPrint('❌ Error adding ingredient: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
+    }
+  }
 
-      double cost = _calculateCost();
-      if (cost <= 0) {
-        _showError('Invalid cost calculation');
-        return;
-      }
+  // Helper untuk format rupiah
+  String _formatRupiah(dynamic amount) {
+    try {
+      double value = amount is double ? amount : (amount?.toDouble() ?? 0);
+      if (value.isNaN || value.isInfinite) return 'Rp 0';
 
-      // FIXED: Safe unit price calculation
-      double unitPrice = cost / jumlah;
-
-      // Validate unit price is reasonable
-      if (!unitPrice.isFinite || unitPrice <= 0 || unitPrice > 1000000) {
-        _showError('Calculated unit price is invalid');
-        return;
-      }
-
-      // Call the callback
-      widget.onAddIngredient(
-        _selectedIngredient!,
-        jumlah,
-        _selectedSatuan,
-        unitPrice,
-      );
-
-      // Reset form
-      _resetForm();
-      _showSuccess('✅ Ingredient added successfully!');
+      return 'Rp ${value.toStringAsFixed(0).replaceAllMapped(
+            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (Match m) => '${m[1]}.',
+          )}';
     } catch (e) {
-      _showError('Error adding ingredient: ${e.toString()}');
-    }
-  }
-
-  void _resetForm() {
-    setState(() {
-      _selectedIngredient = null;
-      _selectedSatuan = '%';
-    });
-    _jumlahController.clear();
-  }
-
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ $message'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  void _showSuccess(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      return 'Rp 0';
     }
   }
 
@@ -208,9 +484,13 @@ class MenuIngredientSelectorWidgetState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             _buildHeader(),
+
             const SizedBox(height: 16),
-            if (_uniqueIngredients.isEmpty)
+
+            // Content
+            if (widget.availableIngredients.isEmpty)
               _buildEmptyIngredientsWarning()
             else
               _buildIngredientSelector(),
@@ -238,7 +518,7 @@ class MenuIngredientSelectorWidgetState
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
-            'Menu Composition',
+            'Komposisi Produk',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -246,6 +526,23 @@ class MenuIngredientSelectorWidgetState
             ),
           ),
         ),
+        // Badge untuk debugging - hanya tampil jika ada ingredients
+        if (widget.availableIngredients.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.green[600],
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${widget.availableIngredients.length}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -264,7 +561,7 @@ class MenuIngredientSelectorWidgetState
           SizedBox(width: 8),
           Expanded(
             child: Text(
-              'No ingredient data available. Please add ingredients in HPP Calculator first.',
+              'Belum ada data bahan. Silakan lengkapi data belanja bahan terlebih dahulu.',
               style: TextStyle(color: Colors.orange),
             ),
           ),
@@ -274,204 +571,160 @@ class MenuIngredientSelectorWidgetState
   }
 
   Widget _buildIngredientSelector() {
-    List<String> usageUnits = UniversalUnitService.getUsageUnits();
+    // Basic units untuk dropdown
+    List<String> usageUnits = [
+      '%',
+      'gram',
+      'kg',
+      'ml',
+      'liter',
+      'buah',
+      'sachet'
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Add Ingredient to Menu:',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
+        // Dropdown Pilih Bahan
         _buildIngredientDropdown(),
-        const SizedBox(height: 12),
-        _buildInputRow(usageUnits),
-        const SizedBox(height: 12),
-        if (_selectedIngredient != null && _jumlahController.text.isNotEmpty)
-          _buildCalculationPreview(),
+
         const SizedBox(height: 16),
+
+        // Row untuk Jumlah dan Satuan
+        Row(
+          children: [
+            // Input Jumlah
+            Expanded(
+              flex: 2,
+              child: _buildJumlahInput(),
+            ),
+            const SizedBox(width: 12),
+            // Dropdown Satuan
+            Expanded(
+              child: _buildSatuanDropdown(usageUnits),
+            ),
+          ],
+        ),
+
+        // Calculation Helper
+        _buildCalculationHelper(),
+
+        // Validation Warning
+        _buildValidationWarning(),
+
+        const SizedBox(height: 16),
+
+        // Tombol Tambah
         _buildAddButton(),
       ],
     );
   }
 
   Widget _buildIngredientDropdown() {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 60),
-      child: DropdownButtonFormField<String>(
-        value: _selectedIngredient,
-        decoration: const InputDecoration(
-          labelText: 'Select Ingredient',
-          border: OutlineInputBorder(),
-          filled: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        isExpanded: true,
-        hint: const Text('Choose an ingredient...'),
-        items: _uniqueIngredients.map((ingredient) {
-          String nama = ingredient['nama']?.toString() ?? 'Unknown';
-          double jumlah = (ingredient['jumlah'] as num?)?.toDouble() ?? 0.0;
-          String satuan = ingredient['satuan']?.toString() ?? 'unit';
-          double totalHarga =
-              (ingredient['totalHarga'] as num?)?.toDouble() ?? 0.0;
-
-          return DropdownMenuItem<String>(
-            value: nama,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  nama,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
+    return DropdownButtonFormField<String>(
+      value: _selectedIngredient,
+      decoration: const InputDecoration(
+        labelText: 'Pilih Bahan',
+        hintText: 'Pilih bahan dari daftar belanja',
+        prefixIcon: Icon(Icons.inventory),
+      ),
+      items: widget.availableIngredients.map((ingredient) {
+        return DropdownMenuItem<String>(
+          value: ingredient['nama'],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                ingredient['nama'] ?? 'Unknown',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              Text(
+                '${ingredient['jumlah'] ?? 0} ${ingredient['satuan'] ?? ''} - ${_formatRupiah(ingredient['totalHarga'])}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
                 ),
-                Text(
-                  '$jumlah $satuan - ${UniversalUnitService.formatRupiah(totalHarga)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: (value) {
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (mounted) {
           setState(() {
             _selectedIngredient = value;
             _jumlahController.clear();
           });
-        },
-        validator: (value) {
-          if (value == null || value.isEmpty) {
-            return 'Please select an ingredient';
-          }
-          return null;
-        },
-      ),
+        }
+      },
     );
   }
 
-  Widget _buildInputRow(List<String> units) {
-    List<String> uniqueUnits = units.toSet().toList();
+  Widget _buildJumlahInput() {
+    String hint = _selectedSatuan == '%' ? '5' : '1';
+    String helper =
+        _selectedSatuan == '%' ? 'Masukkan persentase' : 'Bisa desimal';
 
-    if (!uniqueUnits.contains(_selectedSatuan)) {
-      _selectedSatuan = uniqueUnits.isNotEmpty ? uniqueUnits.first : '%';
-    }
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Amount input
-          Expanded(
-            flex: 2,
-            child: TextFormField(
-              controller: _jumlahController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-              ],
-              decoration: InputDecoration(
-                labelText: 'Amount',
-                hintText: _selectedSatuan == '%' ? '5' : '1',
-                border: const OutlineInputBorder(),
-                filled: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              ),
-              onChanged: (value) {
-                setState(() {}); // Trigger rebuild for cost calculation
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          // Unit dropdown
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: _selectedSatuan,
-              decoration: const InputDecoration(
-                labelText: 'Unit',
-                border: OutlineInputBorder(),
-                filled: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              ),
-              items: uniqueUnits.map((satuan) {
-                String displayText = satuan == '%' ? '% (Percentage)' : satuan;
-                return DropdownMenuItem<String>(
-                  value: satuan,
-                  child: Text(
-                    displayText,
-                    style: const TextStyle(fontSize: 14),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedSatuan = value ?? '%';
-                  _jumlahController.clear();
-                });
-              },
-            ),
-          ),
-        ],
+    return TextField(
+      controller: _jumlahController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+      ],
+      decoration: InputDecoration(
+        labelText: 'Jumlah',
+        hintText: hint,
+        prefixIcon:
+            Icon(_selectedSatuan == '%' ? Icons.percent : Icons.straighten),
+        helperText: helper,
       ),
+      onChanged: (value) {
+        if (mounted) {
+          setState(() {}); // Update real-time calculation
+        }
+      },
     );
   }
 
-  Widget _buildCalculationPreview() {
-    double cost = _calculateCost();
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue[200]!),
+  Widget _buildSatuanDropdown(List<String> units) {
+    return DropdownButtonFormField<String>(
+      value: _selectedSatuan,
+      decoration: const InputDecoration(
+        labelText: 'Satuan',
+        prefixIcon: Icon(Icons.scale),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.calculate, color: Colors.blue[700], size: 16),
-              const SizedBox(width: 6),
-              const Text(
-                'Calculation Preview',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Cost: ${UniversalUnitService.formatRupiah(cost)}',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue[700],
-            ),
-          ),
-        ],
-      ),
+      items: units.map((satuan) {
+        String displayText = satuan;
+        if (satuan == '%') {
+          displayText = '% (Persentase)';
+        }
+        return DropdownMenuItem<String>(
+          value: satuan,
+          child: Text(displayText),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (mounted) {
+          setState(() {
+            _selectedSatuan = value ?? '%';
+            _jumlahController.clear();
+          });
+        }
+      },
     );
   }
 
   Widget _buildAddButton() {
-    bool canAdd = _selectedIngredient != null &&
-        _jumlahController.text.isNotEmpty &&
-        _uniqueIngredients.isNotEmpty;
+    bool canAdd =
+        _selectedIngredient != null && _jumlahController.text.isNotEmpty;
 
-    String buttonText = 'Add to Menu';
+    // Show estimated cost
+    String buttonText = 'Tambah ke Produk';
     if (canAdd) {
       double cost = _calculateCost();
       if (cost > 0) {
-        buttonText = 'Add - ${UniversalUnitService.formatRupiah(cost)}';
+        buttonText = 'Tambah - ${_formatRupiah(cost)}';
       }
     }
 
