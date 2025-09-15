@@ -1,4 +1,4 @@
-// lib/services/storage_service.dart - PHASE 1.5 FIX: Data Persistence
+// lib/services/storage_service.dart - HIGH PRIORITY FIX: Data Loss Prevention + Enhanced Coordination
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,18 +14,23 @@ class StorageService {
   static const String _keyMenuHistory = 'menu_history_v2';
   static const String _keyKaryawanData = 'karyawan_data_v2';
 
-  // Auto-save coordination
+  // HIGH PRIORITY FIX: Enhanced auto-save coordination with queue system
   static DateTime? _lastAutoSave;
   static bool _isSaving = false;
+  static final List<SharedCalculationData> _saveQueue = [];
+  static bool _isProcessingQueue = false;
 
   // Private constructor
   StorageService._();
 
-  // FIXED: Coordinated save to prevent conflicts
+  // HIGH PRIORITY FIX: Enhanced coordinated save with retry mechanism
   static Future<bool> saveSharedData(SharedCalculationData data) async {
     if (_isSaving) {
-      developer.log('Save in progress, skipping...', name: 'StorageService');
-      return false;
+      developer.log('Save in progress, adding to queue...',
+          name: 'StorageService');
+      _saveQueue.add(data);
+      _processSaveQueue(); // Process queue asynchronously
+      return true; // Return true since it's queued
     }
 
     _isSaving = true;
@@ -33,37 +38,67 @@ class StorageService {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // FIXED: Enhanced JSON serialization with type safety
+      // HIGH PRIORITY FIX: Enhanced JSON serialization with comprehensive validation
       final jsonData = <String, dynamic>{
         'version': AppConstants.appVersion,
         'timestamp': DateTime.now().toIso8601String(),
 
-        // HPP Data
-        'variableCosts': _sanitizeVariableCosts(data.variableCosts),
-        'fixedCosts': _sanitizeFixedCosts(data.fixedCosts),
-        'estimasiPorsi': _ensureFiniteDouble(
-            data.estimasiPorsi, AppConstants.defaultEstimasiPorsi),
-        'estimasiProduksiBulanan': _ensureFiniteDouble(
-            data.estimasiProduksiBulanan, AppConstants.defaultEstimasiProduksi),
-        'hppMurniPerPorsi': _ensureFiniteDouble(data.hppMurniPerPorsi, 0.0),
-        'biayaVariablePerPorsi':
-            _ensureFiniteDouble(data.biayaVariablePerPorsi, 0.0),
-        'biayaFixedPerPorsi': _ensureFiniteDouble(data.biayaFixedPerPorsi, 0.0),
+        // HIGH PRIORITY FIX: Enhanced data validation before save
+        'variableCosts': _sanitizeAndValidateVariableCosts(data.variableCosts),
+        'fixedCosts': _sanitizeAndValidateFixedCosts(data.fixedCosts),
+        'estimasiPorsi': _ensureValidDouble(
+            data.estimasiPorsi,
+            AppConstants.defaultEstimasiPorsi,
+            AppConstants.minQuantity,
+            AppConstants.maxQuantity),
+        'estimasiProduksiBulanan': _ensureValidDouble(
+            data.estimasiProduksiBulanan,
+            AppConstants.defaultEstimasiProduksi,
+            AppConstants.minQuantity,
+            AppConstants.maxQuantity),
+        'hppMurniPerPorsi': _ensureValidDouble(
+            data.hppMurniPerPorsi, 0.0, 0.0, AppConstants.maxPrice),
+        'biayaVariablePerPorsi': _ensureValidDouble(
+            data.biayaVariablePerPorsi, 0.0, 0.0, AppConstants.maxPrice),
+        'biayaFixedPerPorsi': _ensureValidDouble(
+            data.biayaFixedPerPorsi, 0.0, 0.0, AppConstants.maxPrice),
 
-        // Operational Data
-        'totalOperationalCost':
-            _ensureFiniteDouble(data.totalOperationalCost, 0.0),
-        'totalHargaSetelahOperational':
-            _ensureFiniteDouble(data.totalHargaSetelahOperational, 0.0),
+        // Operational Data - HIGH PRIORITY FIX: Additional validation
+        'totalOperationalCost': _ensureValidDouble(
+            data.totalOperationalCost, 0.0, 0.0, AppConstants.maxPrice * 10),
+        'totalHargaSetelahOperational': _ensureValidDouble(
+            data.totalHargaSetelahOperational, 0.0, 0.0, AppConstants.maxPrice),
       };
+
+      // HIGH PRIORITY FIX: Validate JSON before saving
+      if (!_validateJsonData(jsonData)) {
+        developer.log('JSON validation failed, skipping save',
+            name: 'StorageService');
+        return false;
+      }
 
       final jsonString = json.encode(jsonData);
 
-      // Save shared data
-      final sharedResult = await prefs.setString(_keySharedData, jsonString);
+      // HIGH PRIORITY FIX: Retry mechanism for save operations
+      bool sharedResult = false;
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
+          sharedResult = await prefs.setString(_keySharedData, jsonString);
+          if (sharedResult) break;
 
-      // FIXED: Save karyawan data separately to prevent conflicts
-      final karyawanResult = await _saveKaryawanData(data.karyawan);
+          developer.log('Save attempt $attempt failed, retrying...',
+              name: 'StorageService');
+          await Future.delayed(Duration(milliseconds: 100 * attempt));
+        } catch (e) {
+          developer.log('Save attempt $attempt error: $e',
+              name: 'StorageService');
+          if (attempt == 3) rethrow;
+        }
+      }
+
+      // HIGH PRIORITY FIX: Save karyawan data separately with validation
+      final karyawanResult =
+          await _saveKaryawanDataWithValidation(data.karyawan);
 
       developer.log(
           'SharedData saved: $sharedResult, Karyawan saved: $karyawanResult',
@@ -75,10 +110,34 @@ class StorageService {
       return false;
     } finally {
       _isSaving = false;
+      _processSaveQueue(); // Process any queued saves
     }
   }
 
-  // FIXED: Enhanced load with separate data sources
+  // HIGH PRIORITY FIX: Queue processor for handling multiple save requests
+  static Future<void> _processSaveQueue() async {
+    if (_isProcessingQueue || _saveQueue.isEmpty || _isSaving) {
+      return;
+    }
+
+    _isProcessingQueue = true;
+
+    while (_saveQueue.isNotEmpty && !_isSaving) {
+      final data = _saveQueue.removeAt(0);
+
+      try {
+        await saveSharedData(data);
+        await Future.delayed(
+            const Duration(milliseconds: 50)); // Small delay between saves
+      } catch (e) {
+        developer.log('Queue processing error: $e', name: 'StorageService');
+      }
+    }
+
+    _isProcessingQueue = false;
+  }
+
+  // HIGH PRIORITY FIX: Enhanced load with comprehensive error recovery
   static Future<SharedCalculationData?> loadSharedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -90,14 +149,24 @@ class StorageService {
         return null;
       }
 
-      final Map<String, dynamic> jsonData = json.decode(sharedJsonString);
+      Map<String, dynamic> jsonData;
+      try {
+        jsonData = json.decode(sharedJsonString);
+      } catch (e) {
+        developer.log('JSON decode error, attempting recovery: $e',
+            name: 'StorageService');
+        return _attemptDataRecovery(prefs);
+      }
 
-      // FIXED: Load karyawan data separately
-      final List<KaryawanData> karyawan = await _loadKaryawanData();
+      // HIGH PRIORITY FIX: Load karyawan data separately with validation
+      final List<KaryawanData> karyawan =
+          await _loadKaryawanDataWithValidation();
 
+      // HIGH PRIORITY FIX: Enhanced data validation during load
       final sharedData = SharedCalculationData(
-        variableCosts: _parseVariableCosts(jsonData['variableCosts']),
-        fixedCosts: _parseFixedCosts(jsonData['fixedCosts']),
+        variableCosts:
+            _parseAndValidateVariableCosts(jsonData['variableCosts']),
+        fixedCosts: _parseAndValidateFixedCosts(jsonData['fixedCosts']),
         estimasiPorsi: _validateAndClampDouble(
           jsonData['estimasiPorsi'],
           AppConstants.defaultEstimasiPorsi,
@@ -129,8 +198,15 @@ class StorageService {
         karyawan: karyawan,
       );
 
+      // HIGH PRIORITY FIX: Final validation of loaded data
+      if (!_validateLoadedData(sharedData)) {
+        developer.log('Loaded data validation failed, returning default',
+            name: 'StorageService');
+        return SharedCalculationData();
+      }
+
       developer.log(
-          'Data loaded: ${sharedData.totalItemCount} items, ${karyawan.length} karyawan',
+          'Data loaded successfully: ${sharedData.totalItemCount} items, ${karyawan.length} karyawan',
           name: 'StorageService');
       return sharedData;
     } catch (e) {
@@ -139,12 +215,44 @@ class StorageService {
     }
   }
 
-  // FIXED: Separate karyawan data management
-  static Future<bool> _saveKaryawanData(List<KaryawanData> karyawan) async {
+  // HIGH PRIORITY FIX: Data recovery mechanism
+  static Future<SharedCalculationData?> _attemptDataRecovery(
+      SharedPreferences prefs) async {
+    try {
+      // Try to recover karyawan data separately
+      final karyawan = await _loadKaryawanDataWithValidation();
+
+      if (karyawan.isNotEmpty) {
+        developer.log(
+            'Partial recovery successful: ${karyawan.length} karyawan',
+            name: 'StorageService');
+        return SharedCalculationData(karyawan: karyawan);
+      }
+
+      return SharedCalculationData();
+    } catch (e) {
+      developer.log('Data recovery failed: $e', name: 'StorageService');
+      return SharedCalculationData();
+    }
+  }
+
+  // HIGH PRIORITY FIX: Enhanced karyawan data management with validation
+  static Future<bool> _saveKaryawanDataWithValidation(
+      List<KaryawanData> karyawan) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      final validKaryawan = karyawan.where((k) => k.isValid).toList();
+      // HIGH PRIORITY FIX: Validate each karyawan before saving
+      final validKaryawan = <KaryawanData>[];
+      for (var k in karyawan) {
+        if (_validateKaryawanData(k)) {
+          validKaryawan.add(k);
+        } else {
+          developer.log('Invalid karyawan data skipped: ${k.namaKaryawan}',
+              name: 'StorageService');
+        }
+      }
+
       final karyawanJson = validKaryawan.map((k) => k.toMap()).toList();
 
       final karyawanString = json.encode({
@@ -160,7 +268,7 @@ class StorageService {
     }
   }
 
-  static Future<List<KaryawanData>> _loadKaryawanData() async {
+  static Future<List<KaryawanData>> _loadKaryawanDataWithValidation() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final String? karyawanString = prefs.getString(_keyKaryawanData);
@@ -178,7 +286,7 @@ class StorageService {
         try {
           if (item is Map<String, dynamic>) {
             final karyawan = KaryawanData.fromMap(item);
-            if (karyawan.isValid) {
+            if (_validateKaryawanData(karyawan)) {
               validKaryawan.add(karyawan);
             }
           }
@@ -195,7 +303,7 @@ class StorageService {
     }
   }
 
-  // FIXED: Enhanced menu history management
+  // HIGH PRIORITY FIX: Enhanced menu history management with validation
   static Future<bool> saveMenuToHistory(MenuItem menu) async {
     try {
       if (!_validateMenuItem(menu)) {
@@ -206,23 +314,30 @@ class StorageService {
       final prefs = await SharedPreferences.getInstance();
       List<String> history = prefs.getStringList(_keyMenuHistory) ?? [];
 
-      // Create menu data with validation
+      // HIGH PRIORITY FIX: Enhanced menu data validation
       final menuData = {
         'id': menu.id,
         'nama_menu': menu.namaMenu,
         'komposisi': menu.komposisi
+            .where((item) => _validateMenuComposition(item))
             .map((item) => {
                   'nama_ingredient': item.namaIngredient,
-                  'jumlah_dipakai':
-                      _ensureFiniteDouble(item.jumlahDipakai, 0.0),
+                  'jumlah_dipakai': _ensureValidDouble(item.jumlahDipakai, 0.0,
+                      AppConstants.minQuantity, AppConstants.maxQuantity),
                   'satuan': item.satuan,
-                  'harga_per_satuan':
-                      _ensureFiniteDouble(item.hargaPerSatuan, 0.0),
+                  'harga_per_satuan': _ensureValidDouble(item.hargaPerSatuan,
+                      0.0, AppConstants.minPrice, AppConstants.maxPrice),
                 })
             .toList(),
         'created_at': menu.createdAt.toIso8601String(),
         'version': AppConstants.appVersion,
       };
+
+      if (menuData['komposisi'] == null ||
+          (menuData['komposisi'] as List).isEmpty) {
+        developer.log('Menu has no valid compositions', name: 'StorageService');
+        return false;
+      }
 
       final menuJson = json.encode(menuData);
 
@@ -261,7 +376,7 @@ class StorageService {
         try {
           final Map<String, dynamic> menuData = json.decode(jsonString);
 
-          // FIXED: Safe menu parsing with validation
+          // HIGH PRIORITY FIX: Enhanced menu parsing with validation
           final komposisi = <MenuComposition>[];
 
           if (menuData['komposisi'] is List) {
@@ -277,9 +392,7 @@ class StorageService {
                         _safeParseDouble(item['harga_per_satuan']) ?? 0.0,
                   );
 
-                  if (composition.namaIngredient.isNotEmpty &&
-                      composition.jumlahDipakai > 0 &&
-                      composition.hargaPerSatuan > 0) {
+                  if (_validateMenuComposition(composition)) {
                     komposisi.add(composition);
                   }
                 } catch (e) {
@@ -313,20 +426,28 @@ class StorageService {
     }
   }
 
-  // FIXED: Coordinated auto-save with debounce
+  // HIGH PRIORITY FIX: Enhanced coordinated auto-save with queue protection
   static Future<void> autoSave(SharedCalculationData data) async {
     final now = DateTime.now();
 
-    // Debounce
+    // HIGH PRIORITY FIX: Enhanced debounce with validation
     if (_lastAutoSave != null &&
         now.difference(_lastAutoSave!).inMilliseconds < 1000) {
       return;
     }
 
+    // HIGH PRIORITY FIX: Validate data before auto-save
+    if (!_validateAutoSaveData(data)) {
+      developer.log('Auto-save skipped: invalid data', name: 'StorageService');
+      return;
+    }
+
     _lastAutoSave = now;
 
-    // Prevent overlapping saves
+    // HIGH PRIORITY FIX: Queue-based auto-save
     if (_isSaving) {
+      _saveQueue.add(data);
+      developer.log('Auto-save queued', name: 'StorageService');
       return;
     }
 
@@ -353,6 +474,10 @@ class StorageService {
         }
       }
 
+      // HIGH PRIORITY FIX: Clear queues on data clear
+      _saveQueue.clear();
+      _lastAutoSave = null;
+
       return success;
     } catch (e) {
       developer.log('Error clearing data: $e', name: 'StorageService');
@@ -360,10 +485,14 @@ class StorageService {
     }
   }
 
-  // HELPER METHODS
+  // HIGH PRIORITY FIX: COMPREHENSIVE VALIDATION METHODS
 
-  static double _ensureFiniteDouble(double value, double defaultValue) {
-    return (value.isFinite && !value.isNaN) ? value : defaultValue;
+  static double _ensureValidDouble(double value, double defaultValue,
+      [double? min, double? max]) {
+    if (!value.isFinite || value.isNaN) return defaultValue;
+    if (min != null && value < min) return defaultValue;
+    if (max != null && value > max) return defaultValue;
+    return value;
   }
 
   static double _validateAndClampDouble(
@@ -412,16 +541,19 @@ class StorageService {
     }
   }
 
-  // Enhanced data sanitization
-  static List<Map<String, dynamic>> _sanitizeVariableCosts(
+  // HIGH PRIORITY FIX: Enhanced data sanitization with validation
+  static List<Map<String, dynamic>> _sanitizeAndValidateVariableCosts(
       List<Map<String, dynamic>> costs) {
-    return costs.map((cost) {
+    return costs.where((cost) => _validateVariableCostItem(cost)).map((cost) {
       return <String, dynamic>{
         'nama': cost['nama']?.toString() ?? '',
-        'totalHarga': _ensureFiniteDouble(
-            _safeParseDouble(cost['totalHarga']) ?? 0.0, 0.0),
-        'jumlah':
-            _ensureFiniteDouble(_safeParseDouble(cost['jumlah']) ?? 0.0, 0.0),
+        'totalHarga': _ensureValidDouble(
+            _safeParseDouble(cost['totalHarga']) ?? 0.0,
+            0.0,
+            AppConstants.minPrice,
+            AppConstants.maxPrice),
+        'jumlah': _ensureValidDouble(_safeParseDouble(cost['jumlah']) ?? 0.0,
+            0.0, AppConstants.minQuantity, AppConstants.maxQuantity),
         'satuan': cost['satuan']?.toString() ?? 'unit',
         'timestamp':
             cost['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
@@ -429,34 +561,141 @@ class StorageService {
     }).toList();
   }
 
-  static List<Map<String, dynamic>> _sanitizeFixedCosts(
+  static List<Map<String, dynamic>> _sanitizeAndValidateFixedCosts(
       List<Map<String, dynamic>> costs) {
-    return costs.map((cost) {
+    return costs.where((cost) => _validateFixedCostItem(cost)).map((cost) {
       return <String, dynamic>{
         'jenis': cost['jenis']?.toString() ?? '',
-        'nominal':
-            _ensureFiniteDouble(_safeParseDouble(cost['nominal']) ?? 0.0, 0.0),
+        'nominal': _ensureValidDouble(_safeParseDouble(cost['nominal']) ?? 0.0,
+            0.0, AppConstants.minPrice, AppConstants.maxPrice),
         'timestamp':
             cost['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
       };
     }).toList();
   }
 
-  static List<Map<String, dynamic>> _parseVariableCosts(dynamic data) {
+  static List<Map<String, dynamic>> _parseAndValidateVariableCosts(
+      dynamic data) {
     if (data == null || data is! List) return [];
+
     try {
-      return data.cast<Map<String, dynamic>>();
+      return data
+          .cast<Map<String, dynamic>>()
+          .where((item) => _validateVariableCostItem(item))
+          .toList();
     } catch (e) {
       return [];
     }
   }
 
-  static List<Map<String, dynamic>> _parseFixedCosts(dynamic data) {
+  static List<Map<String, dynamic>> _parseAndValidateFixedCosts(dynamic data) {
     if (data == null || data is! List) return [];
+
     try {
-      return data.cast<Map<String, dynamic>>();
+      return data
+          .cast<Map<String, dynamic>>()
+          .where((item) => _validateFixedCostItem(item))
+          .toList();
     } catch (e) {
       return [];
+    }
+  }
+
+  // HIGH PRIORITY FIX: Comprehensive validation methods
+  static bool _validateJsonData(Map<String, dynamic> jsonData) {
+    try {
+      // Check required fields
+      if (jsonData['version'] == null) return false;
+      if (jsonData['variableCosts'] == null) return false;
+      if (jsonData['fixedCosts'] == null) return false;
+
+      // Validate numeric fields
+      final estimasiPorsi = _safeParseDouble(jsonData['estimasiPorsi']);
+      if (estimasiPorsi == null || estimasiPorsi <= 0) return false;
+
+      final estimasiProduksi =
+          _safeParseDouble(jsonData['estimasiProduksiBulanan']);
+      if (estimasiProduksi == null || estimasiProduksi <= 0) return false;
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static bool _validateLoadedData(SharedCalculationData data) {
+    try {
+      if (data.estimasiPorsi <= 0 || data.estimasiProduksiBulanan <= 0)
+        return false;
+      if (data.estimasiPorsi > AppConstants.maxQuantity ||
+          data.estimasiProduksiBulanan > AppConstants.maxQuantity) return false;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static bool _validateAutoSaveData(SharedCalculationData data) {
+    try {
+      // Basic validation
+      if (data.estimasiPorsi <= 0 || data.estimasiProduksiBulanan <= 0)
+        return false;
+
+      // Check for reasonable values
+      if (data.hppMurniPerPorsi < 0 ||
+          data.hppMurniPerPorsi > AppConstants.maxPrice) return false;
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static bool _validateVariableCostItem(Map<String, dynamic> item) {
+    try {
+      final nama = item['nama']?.toString() ?? '';
+      if (nama.isEmpty || nama.length > AppConstants.maxTextLength)
+        return false;
+
+      final totalHarga = _safeParseDouble(item['totalHarga']);
+      if (totalHarga == null ||
+          totalHarga <= 0 ||
+          totalHarga > AppConstants.maxPrice) return false;
+
+      final jumlah = _safeParseDouble(item['jumlah']);
+      if (jumlah == null || jumlah <= 0 || jumlah > AppConstants.maxQuantity)
+        return false;
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static bool _validateFixedCostItem(Map<String, dynamic> item) {
+    try {
+      final jenis = item['jenis']?.toString() ?? '';
+      if (jenis.isEmpty || jenis.length > AppConstants.maxTextLength)
+        return false;
+
+      final nominal = _safeParseDouble(item['nominal']);
+      if (nominal == null || nominal <= 0 || nominal > AppConstants.maxPrice)
+        return false;
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static bool _validateKaryawanData(KaryawanData karyawan) {
+    try {
+      if (!karyawan.isValid) return false;
+      if (karyawan.gajiBulanan < AppConstants.minSalary ||
+          karyawan.gajiBulanan > AppConstants.maxSalary) return false;
+      return true;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -466,13 +705,26 @@ class StorageService {
       if (nameValidation != null) return false;
 
       for (var komposisi in menu.komposisi) {
-        if (komposisi.namaIngredient.trim().isEmpty ||
-            komposisi.jumlahDipakai <= 0 ||
-            komposisi.hargaPerSatuan <= 0) {
-          return false;
-        }
+        if (!_validateMenuComposition(komposisi)) return false;
       }
 
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static bool _validateMenuComposition(MenuComposition composition) {
+    try {
+      if (composition.namaIngredient.trim().isEmpty) return false;
+      if (composition.namaIngredient.length > AppConstants.maxTextLength)
+        return false;
+      if (composition.jumlahDipakai <= 0 || !composition.jumlahDipakai.isFinite)
+        return false;
+      if (composition.jumlahDipakai > AppConstants.maxQuantity) return false;
+      if (composition.hargaPerSatuan <= 0 ||
+          !composition.hargaPerSatuan.isFinite) return false;
+      if (composition.hargaPerSatuan > AppConstants.maxPrice) return false;
       return true;
     } catch (e) {
       return false;
