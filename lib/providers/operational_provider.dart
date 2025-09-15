@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - PHASE 1 FIX: Unidirectional Updates Only
+// lib/providers/operational_provider.dart - CRITICAL FIX: Anti-Loop + Async Safety
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -16,8 +16,12 @@ class OperationalProvider with ChangeNotifier {
   OperationalCalculationResult? _lastCalculationResult;
   Timer? _autoSaveTimer;
 
-  // FIXED: Reference data from HPP (read-only, no circular updates)
+  // CRITICAL FIX: Anti-loop & async safety mechanisms
   SharedCalculationData _hppData = SharedCalculationData();
+  int _dataVersion = 0;
+  int _lastHppVersion = -1; // Track HPP version to prevent loops
+  bool _isDisposed = false;
+  bool _isUpdating = false;
 
   // Getters
   List<KaryawanData> get karyawan => _karyawan;
@@ -26,41 +30,95 @@ class OperationalProvider with ChangeNotifier {
   OperationalCalculationResult? get lastCalculationResult =>
       _lastCalculationResult;
   SharedCalculationData get hppData => _hppData;
+  int get dataVersion => _dataVersion; // CRITICAL FIX: Version tracking
+  int get lastHppVersion =>
+      _lastHppVersion; // CRITICAL FIX: HPP version tracking
 
-  // INITIALIZATION - Only loads own data
-  Future<void> initializeFromStorage() async {
-    _setLoading(true);
+  // CRITICAL FIX: Safe async operation wrapper
+  Future<T?> _safeAsyncOperation<T>(Future<T> Function() operation) async {
+    if (_isDisposed || _isUpdating) return null;
+
+    _isUpdating = true;
     try {
-      final savedData = await StorageService.loadSharedData();
-      if (savedData != null) {
-        _karyawan = savedData.karyawan;
-        debugPrint('✅ Operational Data loaded: ${_karyawan.length} karyawan');
-      }
-      _setError(null);
-    } catch (e) {
-      _setError('Error loading operational data: ${e.toString()}');
-      debugPrint('❌ Error loading operational: $e');
+      final result = await operation();
+      if (_isDisposed) return null;
+      return result;
     } finally {
-      _setLoading(false);
+      if (!_isDisposed) {
+        _isUpdating = false;
+      }
     }
   }
 
-  // FIXED: Receive HPP updates (called by ProxyProvider)
-  void updateFromHPP(SharedCalculationData hppData) {
+  // CRITICAL FIX: Safe notification
+  void _notifyListenersSafely() {
+    if (_isDisposed || _isUpdating) return;
+    notifyListeners();
+  }
+
+  // INITIALIZATION
+  Future<void> initializeFromStorage() async {
+    await _safeAsyncOperation(() async {
+      _setLoading(true);
+      try {
+        final savedData = await StorageService.loadSharedData();
+        if (savedData != null && !_isDisposed) {
+          _karyawan = savedData.karyawan;
+          _dataVersion++;
+          debugPrint('✅ Operational Data loaded: ${_karyawan.length} karyawan');
+        }
+        _setError(null);
+        return true;
+      } catch (e) {
+        if (!_isDisposed) {
+          _setError('Error loading operational data: ${e.toString()}');
+          debugPrint('❌ Error loading operational: $e');
+        }
+        return false;
+      } finally {
+        if (!_isDisposed) {
+          _setLoading(false);
+        }
+      }
+    });
+  }
+
+  // CRITICAL FIX: Anti-loop HPP update mechanism
+  void updateFromHPP(SharedCalculationData hppData, int hppVersion) {
+    if (_isDisposed || _isUpdating) return;
+
+    // CRITICAL FIX: Only update if HPP version actually changed
+    if (_lastHppVersion == hppVersion) {
+      return; // Prevent loop - already processed this version
+    }
+
     try {
+      _isUpdating = true;
+
       // Update reference data but keep our karyawan list
       _hppData = hppData.copyWith(karyawan: _karyawan);
-      _recalculateOperational();
+      _lastHppVersion = hppVersion;
+      _dataVersion++;
 
-      // Save updated data
+      _recalculateOperational();
       _scheduleAutoSave();
+
+      debugPrint('✅ Operational updated from HPP version $hppVersion');
     } catch (e) {
-      debugPrint('❌ Error updating from HPP: $e');
+      if (!_isDisposed) {
+        debugPrint('❌ Error updating from HPP: $e');
+      }
+    } finally {
+      _isUpdating = false;
+      if (!_isDisposed) {
+        _notifyListenersSafely();
+      }
     }
   }
 
-  // KARYAWAN CRUD METHODS
+  // KARYAWAN CRUD METHODS - CRITICAL FIX: Async safety
   Future<void> addKaryawan(String nama, String jabatan, double gaji) async {
+    // CRITICAL FIX: Validate inputs before async operation
     final namaValidation = InputValidator.validateName(nama);
     if (namaValidation != null) {
       _setError('Nama karyawan: $namaValidation');
@@ -85,6 +143,7 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
+    // Check for duplicates
     bool isDuplicate = _karyawan.any((k) =>
         k.namaKaryawan.toLowerCase().trim() == nama.toLowerCase().trim());
 
@@ -93,34 +152,45 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    _setLoading(true);
-    try {
-      final newKaryawan = KaryawanData(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        namaKaryawan: nama.trim(),
-        jabatan: jabatan.trim(),
-        gajiBulanan: gaji,
-        createdAt: DateTime.now(),
-      );
+    await _safeAsyncOperation(() async {
+      _setLoading(true);
+      try {
+        if (_isDisposed) return false;
 
-      _karyawan = [..._karyawan, newKaryawan];
+        final newKaryawan = KaryawanData(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          namaKaryawan: nama.trim(),
+          jabatan: jabatan.trim(),
+          gajiBulanan: gaji,
+          createdAt: DateTime.now(),
+        );
 
-      // Update combined data and recalculate
-      _hppData = _hppData.copyWith(karyawan: _karyawan);
-      _recalculateOperational();
+        // CRITICAL FIX: Create new list to avoid mutation
+        _karyawan = [..._karyawan, newKaryawan];
 
-      _setError(null);
-      _scheduleAutoSave();
+        if (!_isDisposed) {
+          // Update combined data and recalculate
+          _hppData = _hppData.copyWith(karyawan: _karyawan);
+          _dataVersion++;
+          _recalculateOperational();
+          _setError(null);
+          _scheduleAutoSave();
+          _notifyListenersSafely();
 
-      // FIXED: Single notification
-      notifyListeners();
-
-      debugPrint('✅ Karyawan added: $nama');
-    } catch (e) {
-      _setError('Error adding karyawan: ${e.toString()}');
-    } finally {
-      _setLoading(false);
-    }
+          debugPrint('✅ Karyawan added: $nama');
+        }
+        return true;
+      } catch (e) {
+        if (!_isDisposed) {
+          _setError('Error adding karyawan: ${e.toString()}');
+        }
+        return false;
+      } finally {
+        if (!_isDisposed) {
+          _setLoading(false);
+        }
+      }
+    });
   }
 
   Future<void> removeKaryawan(int index) async {
@@ -129,33 +199,51 @@ class OperationalProvider with ChangeNotifier {
       return;
     }
 
-    _setLoading(true);
-    try {
-      final removedName = _karyawan[index].namaKaryawan;
-      _karyawan = [..._karyawan]..removeAt(index);
+    await _safeAsyncOperation(() async {
+      _setLoading(true);
+      try {
+        if (_isDisposed) return false;
 
-      // Update combined data and recalculate
-      _hppData = _hppData.copyWith(karyawan: _karyawan);
-      _recalculateOperational();
+        final removedName = _karyawan[index].namaKaryawan;
 
-      _setError(null);
-      _scheduleAutoSave();
+        // CRITICAL FIX: Safe list manipulation
+        final newKaryawan = [..._karyawan];
+        if (index < newKaryawan.length) {
+          newKaryawan.removeAt(index);
+          _karyawan = newKaryawan;
 
-      // FIXED: Single notification
-      notifyListeners();
+          if (!_isDisposed) {
+            // Update combined data and recalculate
+            _hppData = _hppData.copyWith(karyawan: _karyawan);
+            _dataVersion++;
+            _recalculateOperational();
+            _setError(null);
+            _scheduleAutoSave();
+            _notifyListenersSafely();
 
-      debugPrint('✅ Karyawan removed: $removedName');
-    } catch (e) {
-      _setError('Error removing karyawan: ${e.toString()}');
-    } finally {
-      _setLoading(false);
-    }
+            debugPrint('✅ Karyawan removed: $removedName');
+          }
+        }
+        return true;
+      } catch (e) {
+        if (!_isDisposed) {
+          _setError('Error removing karyawan: ${e.toString()}');
+        }
+        return false;
+      } finally {
+        if (!_isDisposed) {
+          _setLoading(false);
+        }
+      }
+    });
   }
 
-  // CORE CALCULATION - FIXED: With division by zero protection
+  // CORE CALCULATION - CRITICAL FIX: Safe calculation with disposal check
   void _recalculateOperational() {
+    if (_isDisposed) return;
+
     try {
-      // FIXED: Division by zero protection
+      // CRITICAL FIX: Division by zero protection
       double estimasiPorsi = _hppData.estimasiPorsi;
       double estimasiProduksi = _hppData.estimasiProduksiBulanan;
       double hppMurni = _hppData.hppMurniPerPorsi;
@@ -173,9 +261,11 @@ class OperationalProvider with ChangeNotifier {
         estimasiProduksiBulanan: estimasiProduksi,
       );
 
+      if (_isDisposed) return;
+
       _lastCalculationResult = result;
 
-      if (result.isValid) {
+      if (result.isValid && !_isDisposed) {
         // Update our combined data with calculation results
         _hppData = _hppData.copyWith(
           karyawan: _karyawan,
@@ -184,31 +274,45 @@ class OperationalProvider with ChangeNotifier {
         );
       }
     } catch (e) {
-      _lastCalculationResult = null;
-      debugPrint('❌ Operational calculation error: $e');
+      if (!_isDisposed) {
+        _lastCalculationResult = null;
+        debugPrint('❌ Operational calculation error: $e');
+      }
     }
   }
 
-  // AUTO-SAVE
+  // AUTO-SAVE - CRITICAL FIX: Disposal safety
   void _scheduleAutoSave() {
+    if (_isDisposed) return;
+
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
-      _performAutoSave();
+      if (!_isDisposed) {
+        _performAutoSave();
+      }
     });
   }
 
   Future<void> _performAutoSave() async {
+    if (_isDisposed) return;
+
     try {
       await StorageService.autoSave(_hppData);
-      debugPrint('💾 Operational Auto-save completed');
+      if (!_isDisposed) {
+        debugPrint('💾 Operational Auto-save completed');
+      }
     } catch (e) {
-      debugPrint('❌ Operational Auto-save failed: $e');
+      if (!_isDisposed) {
+        debugPrint('❌ Operational Auto-save failed: $e');
+      }
     }
   }
 
-  // ANALYSIS METHODS - FIXED: With null safety
+  // ANALYSIS METHODS - CRITICAL FIX: Disposal safety
   Map<String, dynamic> getEfficiencyAnalysis() {
-    if (_lastCalculationResult == null || !_lastCalculationResult!.isValid) {
+    if (_isDisposed ||
+        _lastCalculationResult == null ||
+        !_lastCalculationResult!.isValid) {
       return {
         'isAvailable': false,
         'message': 'Data belum lengkap untuk analisis',
@@ -222,7 +326,9 @@ class OperationalProvider with ChangeNotifier {
   }
 
   Map<String, dynamic> getProjectionAnalysis() {
-    if (_hppData.estimasiPorsi <= 0 || _hppData.estimasiProduksiBulanan <= 0) {
+    if (_isDisposed ||
+        _hppData.estimasiPorsi <= 0 ||
+        _hppData.estimasiProduksiBulanan <= 0) {
       return {
         'isAvailable': false,
         'message': 'Data belum tersedia untuk proyeksi',
@@ -236,27 +342,33 @@ class OperationalProvider with ChangeNotifier {
     );
   }
 
-  // HELPER METHODS
+  // HELPER METHODS - CRITICAL FIX: Disposal safety
   void _setLoading(bool loading) {
+    if (_isDisposed) return;
     _isLoading = loading;
-    if (loading) notifyListeners(); // Only notify when starting to load
+    if (loading) _notifyListenersSafely();
   }
 
   void _setError(String? error) {
+    if (_isDisposed) return;
     _errorMessage = error;
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
   void clearError() {
+    if (_isDisposed) return;
     _errorMessage = null;
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
   void resetData() {
+    if (_isDisposed) return;
+
     _karyawan = [];
     _lastCalculationResult = null;
     _errorMessage = null;
     _isLoading = false;
+    _dataVersion++;
 
     // Update combined data
     _hppData = _hppData.copyWith(
@@ -266,16 +378,19 @@ class OperationalProvider with ChangeNotifier {
     );
 
     _scheduleAutoSave();
-    notifyListeners();
+    _notifyListenersSafely();
   }
 
-  // UTILITY GETTERS - FIXED: With division by zero protection
+  // UTILITY GETTERS - CRITICAL FIX: Disposal safety
   double get totalGajiBulanan {
+    if (_isDisposed) return 0.0;
     return OperationalCalculatorService.calculateTotalGajiBulanan(_karyawan);
   }
 
   double get operationalCostPerPorsi {
-    if (_hppData.estimasiPorsi <= 0 || _hppData.estimasiProduksiBulanan <= 0) {
+    if (_isDisposed ||
+        _hppData.estimasiPorsi <= 0 ||
+        _hppData.estimasiProduksiBulanan <= 0) {
       return 0.0;
     }
 
@@ -301,7 +416,9 @@ class OperationalProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true; // CRITICAL FIX: Mark as disposed first
     _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
     super.dispose();
   }
 }

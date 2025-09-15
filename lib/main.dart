@@ -1,4 +1,4 @@
-// lib/main.dart - PHASE 1 FIX: Clean Architecture
+// lib/main.dart - CRITICAL FIX: Anti-Loop Provider Architecture
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/hpp_provider.dart';
@@ -27,28 +27,55 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // FIXED: Single source of truth - HPP Provider as root
+        // FIXED: HPP Provider as root (no dependencies)
         ChangeNotifierProvider(create: (_) => HPPProvider()),
 
-        // FIXED: Operational depends on HPP (unidirectional)
+        // FIXED: Operational depends on HPP with anti-loop protection
         ChangeNotifierProxyProvider<HPPProvider, OperationalProvider>(
           create: (_) => OperationalProvider(),
-          update: (_, hppProvider, operationalProvider) {
-            operationalProvider!.updateFromHPP(hppProvider.data);
+          update: (context, hppProvider, operationalProvider) {
+            // CRITICAL FIX: Anti-loop mechanism
+            if (operationalProvider == null) {
+              return OperationalProvider();
+            }
+
+            // Prevent update loops with version checking
+            final currentHppVersion = hppProvider.dataVersion;
+            if (operationalProvider.lastHppVersion != currentHppVersion) {
+              // Only update if HPP data actually changed
+              operationalProvider.updateFromHPP(
+                  hppProvider.data, currentHppVersion);
+            }
+
             return operationalProvider;
           },
         ),
 
-        // FIXED: Menu depends on both HPP and Operational (unidirectional)
+        // FIXED: Menu depends on both HPP and Operational with anti-loop protection
         ChangeNotifierProxyProvider2<HPPProvider, OperationalProvider,
             MenuProvider>(
           create: (_) => MenuProvider(),
-          update: (_, hppProvider, operationalProvider, menuProvider) {
-            // Pass combined data to menu provider
-            menuProvider!.updateFromCalculations(
-              hppData: hppProvider.data,
-              operationalData: operationalProvider.lastCalculationResult,
-            );
+          update: (context, hppProvider, operationalProvider, menuProvider) {
+            // CRITICAL FIX: Anti-loop mechanism
+            if (menuProvider == null) {
+              return MenuProvider();
+            }
+
+            final currentHppVersion = hppProvider.dataVersion;
+            final currentOpVersion = operationalProvider.dataVersion;
+
+            // Only update if either dependency actually changed
+            if (menuProvider.lastHppVersion != currentHppVersion ||
+                menuProvider.lastOpVersion != currentOpVersion) {
+              // Debounce rapid updates
+              menuProvider.scheduleUpdate(
+                hppData: hppProvider.data,
+                hppVersion: currentHppVersion,
+                operationalData: operationalProvider.lastCalculationResult,
+                opVersion: currentOpVersion,
+              );
+            }
+
             return menuProvider;
           },
         ),
@@ -73,6 +100,8 @@ class MainNavigationScreen extends StatefulWidget {
 class MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
   bool _isInitialized = false;
+  bool _isInitializing =
+      false; // CRITICAL FIX: Prevent multiple initializations
 
   @override
   void initState() {
@@ -81,31 +110,49 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Future<void> _initializeApp() async {
+    // CRITICAL FIX: Prevent multiple concurrent initializations
+    if (_isInitializing) return;
+    _isInitializing = true;
+
     try {
-      // FIXED: Simple sequential initialization without complex sync
       await Future.delayed(const Duration(milliseconds: 100));
 
       if (!mounted) return;
 
-      // Initialize providers in order (unidirectional dependency)
+      // FIXED: Sequential initialization with error handling
       final hppProvider = Provider.of<HPPProvider>(context, listen: false);
       await hppProvider.initializeFromStorage();
 
-      // Note: Operational and Menu providers will auto-update via ProxyProvider
+      // Wait for operational provider to initialize
+      if (mounted) {
+        final operationalProvider =
+            Provider.of<OperationalProvider>(context, listen: false);
+        await operationalProvider.initializeFromStorage();
+      }
+
+      // Wait for menu provider to initialize
+      if (mounted) {
+        final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+        await menuProvider.initializeFromStorage();
+      }
 
       if (mounted) {
         setState(() {
           _isInitialized = true;
         });
-        debugPrint('✅ App initialized successfully');
+        debugPrint(
+            '✅ App initialized successfully - Anti-loop architecture active');
       }
     } catch (e) {
       debugPrint('❌ Initialization error: $e');
       if (mounted) {
         setState(() {
-          _isInitialized = true;
+          _isInitialized =
+              true; // Still mark as initialized to prevent indefinite loading
         });
       }
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -120,6 +167,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
               CircularProgressIndicator(),
               SizedBox(height: 16),
               Text('Loading HPP Calculator...'),
+              SizedBox(height: 8),
+              Text('Initializing anti-loop architecture...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
         ),

@@ -7,7 +7,6 @@ import '../widgets/menu/menu_input_widget.dart';
 import '../widgets/menu/menu_ingredient_selector_widget.dart';
 import '../widgets/menu/menu_composition_list_widget.dart';
 import '../widgets/menu/menu_calculation_result_widget.dart';
-import '../widgets/common/loading_widget.dart';
 import '../widgets/common/confirmation_dialog.dart';
 import '../utils/constants.dart';
 import '../theme/app_colors.dart';

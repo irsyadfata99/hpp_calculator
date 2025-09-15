@@ -1,4 +1,4 @@
-// lib/utils/validators.dart - TAHAP 3 IMPROVED VERSION - FIXED
+// lib/utils/validators.dart - COMPLETE FIX: Self-Reference + Null Safety
 import 'constants.dart';
 
 class InputValidator {
@@ -54,7 +54,7 @@ class InputValidator {
     return null;
   }
 
-  /// FIXED: Validate salary dengan UMR Indonesia context
+  /// CRITICAL FIX: Validate salary dengan UMR Indonesia context - NULL SAFETY
   static String? validateSalary(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Gaji tidak boleh kosong';
@@ -64,36 +64,38 @@ class InputValidator {
     String cleanValue = value.replaceAll(RegExp(r'[Rp\.,\s]'), '');
 
     double? salary = double.tryParse(cleanValue);
+
+    // CRITICAL FIX: Prevent null bypass - handle null case explicitly
     if (salary == null) {
       return 'Gaji harus berupa angka yang valid';
     }
 
-    // FIXED: Use direct double validation
+    // CRITICAL FIX: Use null-safe direct validation
     return validateSalaryDirect(salary);
   }
 
-  /// FIXED: Direct double validation untuk salary - menghindari string conversion issues
-  static String? validateSalaryDirect(double salary) {
-    // Debug logging untuk troubleshooting
-    print('🔍 Salary validation debug:');
-    print('  Salary value: $salary');
-    print('  Min salary: ${AppConstants.minSalary}');
-    print('  Max salary: ${AppConstants.maxSalary}');
-    print('  Is below min: ${salary < AppConstants.minSalary}');
-    print('  Is above max: ${salary > AppConstants.maxSalary}');
+  /// CRITICAL FIX: Direct double validation untuk salary - Enhanced null safety
+  static String? validateSalaryDirect(double? salary) {
+    // CRITICAL FIX: Handle null input explicitly
+    if (salary == null) {
+      return 'Gaji tidak boleh kosong';
+    }
 
+    // CRITICAL FIX: Check for invalid numbers (NaN, Infinity)
+    if (!salary.isFinite || salary.isNaN) {
+      return 'Gaji harus berupa angka yang valid';
+    }
+
+    // Validate range
     if (salary < AppConstants.minSalary) {
-      print('  ❌ Rejected: Below minimum');
       return AppConstants.errorLowSalary;
     }
 
     if (salary > AppConstants.maxSalary) {
-      print('  ❌ Rejected: Above maximum');
       return AppConstants.errorHighSalary;
     }
 
-    print('  ✅ Accepted: Valid salary');
-    return null;
+    return null; // Valid
   }
 
   /// Validate quantity dengan context UMKM Indonesia
@@ -102,7 +104,8 @@ class InputValidator {
       return 'Jumlah tidak boleh kosong';
     }
 
-    double? quantity = double.tryParse(value);
+    // CRITICAL FIX: Enhanced parsing with null safety
+    double? quantity = _safeParseDouble(value.trim());
     if (quantity == null) {
       return AppConstants.errorInvalidQuantity;
     }
@@ -127,7 +130,8 @@ class InputValidator {
     // Remove % symbol if present
     String cleanValue = value.replaceAll('%', '').trim();
 
-    double? percentage = double.tryParse(cleanValue);
+    // CRITICAL FIX: Enhanced parsing with null safety
+    double? percentage = _safeParseDouble(cleanValue);
     if (percentage == null) {
       return 'Persentase harus berupa angka';
     }
@@ -143,8 +147,18 @@ class InputValidator {
     return null;
   }
 
-  /// Validate margin dengan business logic Indonesia UMKM
-  static String? validateMargin(double margin) {
+  /// CRITICAL FIX: Validate margin dengan enhanced null safety
+  static String? validateMargin(double? margin) {
+    // CRITICAL FIX: Handle null input
+    if (margin == null) {
+      return 'Margin tidak boleh kosong';
+    }
+
+    // CRITICAL FIX: Check for invalid numbers
+    if (!margin.isFinite || margin.isNaN) {
+      return 'Margin harus berupa angka yang valid';
+    }
+
     if (margin < AppConstants.minPercentage) {
       return 'Margin harus lebih dari 0%';
     }
@@ -161,8 +175,18 @@ class InputValidator {
     return null;
   }
 
-  /// Validate business estimations untuk UMKM Indonesia
-  static String? validateEstimation(double value, String type) {
+  /// CRITICAL FIX: Validate business estimations dengan enhanced null safety
+  static String? validateEstimation(double? value, String type) {
+    // CRITICAL FIX: Handle null input
+    if (value == null) {
+      return '$type tidak boleh kosong';
+    }
+
+    // CRITICAL FIX: Check for invalid numbers
+    if (!value.isFinite || value.isNaN) {
+      return '$type harus berupa angka yang valid';
+    }
+
     if (value <= 0) {
       return '$type harus lebih dari 0';
     }
@@ -190,6 +214,28 @@ class InputValidator {
     return null;
   }
 
+  /// CRITICAL FIX: Enhanced safe double parsing with comprehensive null safety
+  static double? _safeParseDouble(String value) {
+    if (value.isEmpty) return null;
+
+    try {
+      // Remove common formatting
+      String cleaned = value.replaceAll(RegExp(r'[Rp\s,\.]'), '');
+      if (cleaned.isEmpty) return null;
+
+      double? parsed = double.tryParse(cleaned);
+
+      // CRITICAL FIX: Validate parsed result
+      if (parsed == null || !parsed.isFinite || parsed.isNaN) {
+        return null;
+      }
+
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Business logic validation untuk HPP calculation
   static Map<String, String?> validateHPPCalculation({
     required List<Map<String, dynamic>> variableCosts,
@@ -206,15 +252,33 @@ class InputValidator {
           'Belum ada data bahan baku. Tambahkan minimal 1 bahan.';
     }
 
-    // Check realistic production
-    double totalPorsi = estimasiPorsi * estimasiProduksi;
-    if (totalPorsi > 10000) {
-      warnings['production'] =
-          'Total produksi bulanan sangat besar (${totalPorsi.toStringAsFixed(0)} porsi). Pastikan realistis.';
+    // FIXED: Call static methods without class prefix (we're inside the class)
+    final estimasiPorsiValidation = validateEstimation(estimasiPorsi, 'porsi');
+    if (estimasiPorsiValidation != null) {
+      warnings['estimasiPorsi'] = estimasiPorsiValidation;
     }
 
-    // Check operational cost ratio
-    if (totalOperational != null && hppResult != null && hppResult > 0) {
+    final estimasiProduksiValidation =
+        validateEstimation(estimasiProduksi, 'produksi');
+    if (estimasiProduksiValidation != null) {
+      warnings['estimasiProduksi'] = estimasiProduksiValidation;
+    }
+
+    // Check realistic production - CRITICAL FIX: Enhanced safety
+    if (estimasiPorsi > 0 && estimasiProduksi > 0) {
+      double totalPorsi = estimasiPorsi * estimasiProduksi;
+      if (totalPorsi > 10000) {
+        warnings['production'] =
+            'Total produksi bulanan sangat besar (${totalPorsi.toStringAsFixed(0)} porsi). Pastikan realistis.';
+      }
+    }
+
+    // Check operational cost ratio - CRITICAL FIX: Enhanced null safety
+    if (totalOperational != null &&
+        hppResult != null &&
+        hppResult > 0 &&
+        totalOperational.isFinite &&
+        hppResult.isFinite) {
       double operationalRatio = (totalOperational / hppResult) * 100;
       if (operationalRatio > AppConstants.maxOperationalRatio) {
         warnings['operational'] = AppConstants.warningHighOperational;
@@ -225,8 +289,9 @@ class InputValidator {
   }
 
   /// Validate menu composition untuk restaurant/warung
-  static String? validateMenuComposition(List<dynamic> composition) {
-    if (composition.isEmpty) {
+  static String? validateMenuComposition(List<dynamic>? composition) {
+    // CRITICAL FIX: Handle null input
+    if (composition == null || composition.isEmpty) {
       return 'Menu harus memiliki minimal 1 bahan';
     }
 
@@ -237,16 +302,30 @@ class InputValidator {
     return null;
   }
 
-  /// Validate competitive pricing untuk market context Indonesia
+  /// CRITICAL FIX: Validate competitive pricing dengan enhanced null safety
   static Map<String, dynamic> validateCompetitivePricing({
-    required double hargaJual,
-    required String businessType,
+    required double? hargaJual,
+    required String? businessType,
   }) {
     Map<String, dynamic> analysis = {
-      'isCompetitive': true,
+      'isCompetitive': false,
       'warning': null,
       'suggestion': null,
     };
+
+    // CRITICAL FIX: Handle null inputs
+    if (hargaJual == null || businessType == null) {
+      analysis['warning'] = 'Data tidak lengkap untuk analisis harga';
+      return analysis;
+    }
+
+    // CRITICAL FIX: Validate harga jual
+    if (!hargaJual.isFinite || hargaJual.isNaN || hargaJual <= 0) {
+      analysis['warning'] = 'Harga jual tidak valid';
+      return analysis;
+    }
+
+    analysis['isCompetitive'] = true; // Default to true if no issues found
 
     // Indonesian UMKM market price ranges (rough estimates)
     Map<String, Map<String, double>> marketRanges = {
@@ -286,12 +365,15 @@ class InputValidator {
     return input.replaceAll(RegExp(r'[^\d\.]'), '');
   }
 
-  /// Format input untuk display yang user-friendly
-  static String formatInputForDisplay(String input, String type) {
+  /// Format input untuk display yang user-friendly - CRITICAL FIX: Null safety
+  static String formatInputForDisplay(String? input, String type) {
+    if (input == null || input.isEmpty) return '';
+
     switch (type.toLowerCase()) {
       case 'rupiah':
+        // FIXED: Call static method without class prefix
         String clean = cleanNumericInput(input);
-        double? value = double.tryParse(clean);
+        double? value = _safeParseDouble(clean);
         if (value != null) {
           return 'Rp ${value.toStringAsFixed(0).replaceAllMapped(
                 RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -305,38 +387,42 @@ class InputValidator {
     return input;
   }
 
-  /// Validate complete UMKM business setup
+  /// CRITICAL FIX: Validate complete UMKM business setup dengan enhanced null safety
   static Map<String, String?> validateCompleteUMKMSetup({
-    required String businessName,
-    required List<Map<String, dynamic>> variableCosts,
-    required List<Map<String, dynamic>> fixedCosts,
-    required List<dynamic> karyawan,
-    required double estimasiPorsi,
-    required double estimasiProduksi,
+    required String? businessName,
+    required List<Map<String, dynamic>>? variableCosts,
+    required List<Map<String, dynamic>>? fixedCosts,
+    required List<dynamic>? karyawan,
+    required double? estimasiPorsi,
+    required double? estimasiProduksi,
   }) {
     Map<String, String?> validation = {};
 
-    // Business name
-    validation['businessName'] = validateName(businessName);
+    // CRITICAL FIX: Handle null inputs
+    if (businessName == null) {
+      validation['businessName'] = 'Nama bisnis tidak boleh kosong';
+    } else {
+      validation['businessName'] = validateName(businessName);
+    }
 
     // Bahan baku
-    if (variableCosts.isEmpty) {
+    if (variableCosts == null || variableCosts.isEmpty) {
       validation['variableCosts'] = 'UMKM harus memiliki data bahan baku';
     }
 
     // Fixed costs (opsional tapi disarankan)
-    if (fixedCosts.isEmpty) {
+    if (fixedCosts == null || fixedCosts.isEmpty) {
       validation['fixedCosts'] =
           'Disarankan menambahkan biaya tetap (sewa, listrik, dll)';
     }
 
     // Karyawan (opsional untuk UMKM kecil)
-    if (karyawan.isEmpty) {
+    if (karyawan == null || karyawan.isEmpty) {
       validation['karyawan'] =
           'Info: Belum ada data karyawan (OK untuk usaha sendiri)';
     }
 
-    // Production estimation
+    // FIXED: Call static methods without class prefix
     validation['estimasiPorsi'] = validateEstimation(estimasiPorsi, 'porsi');
     validation['estimasiProduksi'] =
         validateEstimation(estimasiProduksi, 'produksi');

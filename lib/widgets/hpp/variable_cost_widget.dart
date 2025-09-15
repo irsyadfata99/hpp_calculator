@@ -1,5 +1,4 @@
-// File: lib/widgets/variable_cost_widget.dart (Universal - Fixed)
-
+// lib/widgets/hpp/variable_cost_widget.dart - CRITICAL FIX: Form Controllers + Input Parsing
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/universal_unit_service.dart';
@@ -27,35 +26,139 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   final _totalHargaController = TextEditingController();
   final _jumlahController = TextEditingController();
   String _selectedSatuan = 'unit';
+  bool _isProcessing = false; // CRITICAL FIX: Add processing state
 
   @override
   void dispose() {
+    // CRITICAL FIX: Proper controller disposal
     _namaController.dispose();
     _totalHargaController.dispose();
     _jumlahController.dispose();
     super.dispose();
   }
 
-  void _tambahItem() {
-    if (_namaController.text.isNotEmpty &&
-        _totalHargaController.text.isNotEmpty &&
-        _jumlahController.text.isNotEmpty) {
-      double totalHarga = double.tryParse(_totalHargaController.text) ?? 0;
-      double jumlah = double.tryParse(_jumlahController.text) ?? 0;
+  // CRITICAL FIX: Enhanced input parsing
+  double? _parseDouble(String value) {
+    if (value.trim().isEmpty) return null;
 
-      if (totalHarga > 0 && jumlah > 0) {
-        widget.onAddItem(
-            _namaController.text, totalHarga, jumlah, _selectedSatuan);
+    try {
+      // Remove currency formatting
+      String cleaned = value.replaceAll(RegExp(r'[Rp\s,\.]'), '');
+      if (cleaned.isEmpty) return null;
 
-        // Clear form
+      double? parsed = double.tryParse(cleaned);
+      if (parsed == null || !parsed.isFinite || parsed.isNaN) {
+        return null;
+      }
+
+      return parsed > 0 ? parsed : null;
+    } catch (e) {
+      debugPrint('❌ Parse error: $e');
+      return null;
+    }
+  }
+
+  // CRITICAL FIX: Enhanced form validation & submission
+  Future<void> _tambahItem() async {
+    if (_isProcessing) return; // Prevent double submission
+
+    // CRITICAL FIX: Validate all inputs before processing
+    final nama = _namaController.text.trim();
+    final totalHargaText = _totalHargaController.text.trim();
+    final jumlahText = _jumlahController.text.trim();
+
+    if (nama.isEmpty) {
+      _showError('Nama bahan tidak boleh kosong');
+      return;
+    }
+
+    if (totalHargaText.isEmpty) {
+      _showError('Total harga tidak boleh kosong');
+      return;
+    }
+
+    if (jumlahText.isEmpty) {
+      _showError('Jumlah tidak boleh kosong');
+      return;
+    }
+
+    // CRITICAL FIX: Safe number parsing
+    final totalHarga = _parseDouble(totalHargaText);
+    final jumlah = _parseDouble(jumlahText);
+
+    if (totalHarga == null || totalHarga <= 0) {
+      _showError('Total harga harus berupa angka yang valid dan lebih dari 0');
+      return;
+    }
+
+    if (jumlah == null || jumlah <= 0) {
+      _showError('Jumlah harus berupa angka yang valid dan lebih dari 0');
+      return;
+    }
+
+    // CRITICAL FIX: Reasonable limits validation
+    if (totalHarga > 50000000) {
+      // 50 million max
+      _showError('Total harga terlalu besar (maksimal Rp 50 juta)');
+      return;
+    }
+
+    if (jumlah > 5000) {
+      // 5000 units max
+      _showError('Jumlah terlalu besar (maksimal 5000 unit)');
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      // CRITICAL FIX: Call provider method safely
+      await widget.onAddItem(nama, totalHarga, jumlah, _selectedSatuan);
+
+      // CRITICAL FIX: Clear form only after successful addition
+      if (mounted) {
         _namaController.clear();
         _totalHargaController.clear();
         _jumlahController.clear();
         _selectedSatuan = 'unit';
 
-        setState(() {});
+        _showSuccess('✅ Bahan berhasil ditambahkan');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Error menambah bahan: ${e.toString()}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
       }
     }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('❌ $message'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -66,20 +169,11 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             _buildHeader(),
-
             const SizedBox(height: 16),
-
-            // Form Input
             _buildFormInput(),
-
             const SizedBox(height: 12),
-
-            // Tombol Tambah
             _buildTambahButton(),
-
-            // List Items
             if (widget.variableCosts.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Divider(),
@@ -87,14 +181,11 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
               const Text('Daftar Belanja:',
                   style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
-
-              // Items List
               ...widget.variableCosts.asMap().entries.map((entry) {
                 int index = entry.key;
                 Map<String, dynamic> item = entry.value;
                 return _buildItemTile(item, index);
               }),
-
               const SizedBox(height: 12),
               _buildTotalSection(),
             ],
@@ -145,13 +236,21 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
         const SizedBox(height: 8),
 
         // Nama Barang
-        TextField(
+        TextFormField(
           controller: _namaController,
+          enabled: !_isProcessing, // CRITICAL FIX: Disable during processing
           decoration: const InputDecoration(
             labelText: 'Nama Bahan',
             hintText: 'Contoh: Kain Katun, Selai, Kertas A4',
             prefixIcon: Icon(Icons.inventory),
+            border: OutlineInputBorder(),
           ),
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Nama bahan tidak boleh kosong';
+            }
+            return null;
+          },
         ),
 
         const SizedBox(height: 12),
@@ -162,8 +261,9 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
             // Total Harga
             Expanded(
               flex: 2,
-              child: TextField(
+              child: TextFormField(
                 controller: _totalHargaController,
+                enabled: !_isProcessing,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
@@ -171,15 +271,27 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
                   hintText: '50000',
                   prefixText: 'Rp ',
                   prefixIcon: Icon(Icons.attach_money),
+                  border: OutlineInputBorder(),
                 ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Total harga tidak boleh kosong';
+                  }
+                  final parsed = _parseDouble(value);
+                  if (parsed == null || parsed <= 0) {
+                    return 'Harga harus lebih dari 0';
+                  }
+                  return null;
+                },
               ),
             ),
             const SizedBox(width: 12),
 
             // Jumlah
             Expanded(
-              child: TextField(
+              child: TextFormField(
                 controller: _jumlahController,
+                enabled: !_isProcessing,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
@@ -188,7 +300,18 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
                 decoration: const InputDecoration(
                   labelText: 'Jumlah',
                   hintText: '1',
+                  border: OutlineInputBorder(),
                 ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Jumlah tidak boleh kosong';
+                  }
+                  final parsed = _parseDouble(value);
+                  if (parsed == null || parsed <= 0) {
+                    return 'Jumlah harus lebih dari 0';
+                  }
+                  return null;
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -200,7 +323,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
 
         const SizedBox(height: 8),
 
-        // Info helper untuk percentage mode
+        // Info helper
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -231,7 +354,7 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey[300]!),
         borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[50],
+        color: _isProcessing ? Colors.grey[100] : Colors.grey[50],
       ),
       child: DropdownButton<String>(
         value: _selectedSatuan,
@@ -242,11 +365,13 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
             child: Text(satuan),
           );
         }).toList(),
-        onChanged: (String? newValue) {
-          setState(() {
-            _selectedSatuan = newValue ?? 'unit';
-          });
-        },
+        onChanged: _isProcessing
+            ? null
+            : (String? newValue) {
+                setState(() {
+                  _selectedSatuan = newValue ?? 'unit';
+                });
+              },
       ),
     );
   }
@@ -255,11 +380,17 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _tambahItem,
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah ke Belanja'),
+        onPressed: _isProcessing ? null : _tambahItem,
+        icon: _isProcessing
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add),
+        label: Text(_isProcessing ? 'Menambahkan...' : 'Tambah ke Belanja'),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green[600],
+          backgroundColor: _isProcessing ? Colors.grey : Colors.green[600],
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
@@ -268,10 +399,16 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   }
 
   Widget _buildItemTile(Map<String, dynamic> item, int index) {
-    // FIXED: Handle CalculationResult properly
+    // CRITICAL FIX: Safe value extraction
+    final nama = item['nama']?.toString() ?? 'Unknown';
+    final totalHarga = _parseDouble(item['totalHarga']?.toString()) ?? 0.0;
+    final jumlah = _parseDouble(item['jumlah']?.toString()) ?? 0.0;
+    final satuan = item['satuan']?.toString() ?? 'unit';
+
+    // CRITICAL FIX: Handle CalculationResult properly
     CalculationResult unitPriceResult = UniversalUnitService.calculateUnitPrice(
-      totalPrice: item['totalHarga'],
-      packageQuantity: item['jumlah'],
+      totalPrice: totalHarga,
+      packageQuantity: jumlah,
     );
 
     double hargaPerSatuan =
@@ -292,15 +429,15 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item['nama'],
+                  nama,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  '${item['jumlah']} ${item['satuan']} - ${UniversalUnitService.formatRupiah(item['totalHarga'])}',
+                  '$jumlah $satuan - ${UniversalUnitService.formatRupiah(totalHarga)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 Text(
-                  'Per ${item['satuan']}: ${UniversalUnitService.formatRupiah(hargaPerSatuan)}',
+                  'Per $satuan: ${UniversalUnitService.formatRupiah(hargaPerSatuan)}',
                   style: TextStyle(
                       fontSize: 11,
                       color: Colors.green[700],
@@ -310,8 +447,11 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
             ),
           ),
           IconButton(
-            onPressed: () => widget.onRemoveItem(index),
-            icon: const Icon(Icons.delete, color: Colors.red),
+            onPressed: _isProcessing ? null : () => widget.onRemoveItem(index),
+            icon: Icon(
+              Icons.delete,
+              color: _isProcessing ? Colors.grey : Colors.red,
+            ),
             iconSize: 20,
           ),
         ],
@@ -320,8 +460,12 @@ class VariableCostWidgetState extends State<VariableCostWidget> {
   }
 
   Widget _buildTotalSection() {
-    double totalVariableCost =
-        widget.variableCosts.fold(0.0, (sum, item) => sum + item['totalHarga']);
+    double totalVariableCost = 0.0;
+
+    for (var item in widget.variableCosts) {
+      final totalHarga = _parseDouble(item['totalHarga']?.toString()) ?? 0.0;
+      totalVariableCost += totalHarga;
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),

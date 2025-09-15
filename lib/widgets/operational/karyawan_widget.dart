@@ -1,3 +1,4 @@
+// lib/widgets/operational/karyawan_widget.dart - CRITICAL FIX: Form Controllers + Input Parsing
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/karyawan_data.dart';
@@ -25,9 +26,11 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
   final _namaController = TextEditingController();
   final _jabatanController = TextEditingController();
   final _gajiController = TextEditingController();
+  bool _isProcessing = false; // CRITICAL FIX: Add processing state
 
   @override
   void dispose() {
+    // CRITICAL FIX: Proper controller disposal
     _namaController.dispose();
     _jabatanController.dispose();
     _gajiController.dispose();
@@ -41,24 +44,132 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
         )}';
   }
 
-  void _tambahKaryawan() {
-    if (_namaController.text.isNotEmpty &&
-        _jabatanController.text.isNotEmpty &&
-        _gajiController.text.isNotEmpty) {
-      double gaji = double.tryParse(_gajiController.text) ?? 0;
+  // CRITICAL FIX: Enhanced salary parsing
+  double? _parseGaji(String value) {
+    if (value.trim().isEmpty) return null;
 
-      if (gaji > 0) {
-        widget.onAddKaryawan(
-            _namaController.text, _jabatanController.text, gaji);
+    try {
+      // Remove currency formatting
+      String cleaned = value.replaceAll(RegExp(r'[Rp\s,\.]'), '');
+      if (cleaned.isEmpty) return null;
 
-        // Clear form
+      double? parsed = double.tryParse(cleaned);
+      if (parsed == null || !parsed.isFinite || parsed.isNaN) {
+        return null;
+      }
+
+      // CRITICAL FIX: Reasonable salary range
+      if (parsed < 100000 || parsed > 15000000) {
+        return null;
+      }
+
+      return parsed;
+    } catch (e) {
+      debugPrint('❌ Salary parse error: $e');
+      return null;
+    }
+  }
+
+  // CRITICAL FIX: Enhanced form validation & submission
+  Future<void> _tambahKaryawan() async {
+    if (_isProcessing) return; // Prevent double submission
+
+    // CRITICAL FIX: Validate all inputs before processing
+    final nama = _namaController.text.trim();
+    final jabatan = _jabatanController.text.trim();
+    final gajiText = _gajiController.text.trim();
+
+    if (nama.isEmpty) {
+      _showError('Nama karyawan tidak boleh kosong');
+      return;
+    }
+
+    if (nama.length < 2) {
+      _showError('Nama karyawan minimal 2 karakter');
+      return;
+    }
+
+    if (jabatan.isEmpty) {
+      _showError('Jabatan tidak boleh kosong');
+      return;
+    }
+
+    if (jabatan.length < 2) {
+      _showError('Jabatan minimal 2 karakter');
+      return;
+    }
+
+    if (gajiText.isEmpty) {
+      _showError('Gaji tidak boleh kosong');
+      return;
+    }
+
+    // CRITICAL FIX: Safe salary parsing
+    final gaji = _parseGaji(gajiText);
+
+    if (gaji == null) {
+      _showError('Gaji harus berupa angka antara Rp 100.000 - Rp 15.000.000');
+      return;
+    }
+
+    // Check for duplicate names
+    bool isDuplicate = widget.sharedData.karyawan.any((k) =>
+        k.namaKaryawan.toLowerCase().trim() == nama.toLowerCase().trim());
+
+    if (isDuplicate) {
+      _showError('Nama karyawan sudah ada. Gunakan nama yang berbeda.');
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      // CRITICAL FIX: Call provider method safely
+      await widget.onAddKaryawan(nama, jabatan, gaji);
+
+      // CRITICAL FIX: Clear form only after successful addition
+      if (mounted) {
         _namaController.clear();
         _jabatanController.clear();
         _gajiController.clear();
 
-        setState(() {});
+        _showSuccess('✅ Karyawan berhasil ditambahkan');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Error menambah karyawan: ${e.toString()}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
       }
     }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('❌ $message'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -134,13 +245,24 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
         const SizedBox(height: 8),
 
         // Nama Karyawan
-        TextField(
+        TextFormField(
           controller: _namaController,
+          enabled: !_isProcessing,
           decoration: const InputDecoration(
             labelText: 'Nama Karyawan',
             hintText: 'Contoh: Budi Santoso',
             prefixIcon: Icon(Icons.person),
+            border: OutlineInputBorder(),
           ),
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Nama karyawan tidak boleh kosong';
+            }
+            if (value.trim().length < 2) {
+              return 'Nama minimal 2 karakter';
+            }
+            return null;
+          },
         ),
 
         const SizedBox(height: 12),
@@ -150,30 +272,77 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
           children: [
             Expanded(
               flex: 2,
-              child: TextField(
+              child: TextFormField(
                 controller: _jabatanController,
+                enabled: !_isProcessing,
                 decoration: const InputDecoration(
                   labelText: 'Jabatan',
                   hintText: 'Contoh: Kasir, Koki',
                   prefixIcon: Icon(Icons.work),
+                  border: OutlineInputBorder(),
                 ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Jabatan tidak boleh kosong';
+                  }
+                  if (value.trim().length < 2) {
+                    return 'Jabatan minimal 2 karakter';
+                  }
+                  return null;
+                },
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               flex: 2,
-              child: TextField(
+              child: TextFormField(
                 controller: _gajiController,
+                enabled: !_isProcessing,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
                   labelText: 'Gaji/Bulan',
                   hintText: '2500000',
                   prefixText: 'Rp ',
+                  border: OutlineInputBorder(),
                 ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Gaji tidak boleh kosong';
+                  }
+                  final parsed = _parseGaji(value);
+                  if (parsed == null) {
+                    return 'Gaji harus antara 100rb - 15jt';
+                  }
+                  return null;
+                },
               ),
             ),
           ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // Info helper
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.orange[50],
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.orange[200]!),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.orange[600], size: 16),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Gaji akan dihitung sebagai biaya operasional bulanan',
+                  style: TextStyle(fontSize: 11, color: Colors.orange),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -183,11 +352,17 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _tambahKaryawan,
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah Karyawan'),
+        onPressed: _isProcessing ? null : _tambahKaryawan,
+        icon: _isProcessing
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add),
+        label: Text(_isProcessing ? 'Menambahkan...' : 'Tambah Karyawan'),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orange[600],
+          backgroundColor: _isProcessing ? Colors.grey : Colors.orange[600],
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
@@ -242,8 +417,12 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
             ),
           ),
           IconButton(
-            onPressed: () => widget.onRemoveKaryawan(index),
-            icon: const Icon(Icons.delete, color: Colors.red),
+            onPressed:
+                _isProcessing ? null : () => widget.onRemoveKaryawan(index),
+            icon: Icon(
+              Icons.delete,
+              color: _isProcessing ? Colors.grey : Colors.red,
+            ),
             iconSize: 20,
           ),
         ],
