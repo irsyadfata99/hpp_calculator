@@ -1,4 +1,4 @@
-// lib/providers/operational_provider.dart - CRITICAL FIX: Race Condition + Async Safety
+// lib/providers/operational_provider.dart - CRITICAL FIX: Memory-Safe Instance-based Tracking
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/karyawan_data.dart';
@@ -23,6 +23,11 @@ class OperationalProvider with ChangeNotifier {
   bool _isDisposed = false;
   bool _isUpdating = false;
 
+  // CRITICAL FIX: Instance-based tracking (replaces mixin)
+  DateTime? _lastUpdateTime;
+  DateTime? _lastResetTime;
+  int _updateCount = 0;
+
   // CRITICAL FIX: Operation queue to prevent race conditions
   final List<Future<void> Function()> _operationQueue = [];
   bool _isProcessingQueue = false;
@@ -37,6 +42,36 @@ class OperationalProvider with ChangeNotifier {
   SharedCalculationData get hppData => _hppData;
   int get dataVersion => _dataVersion;
   int get lastHppVersion => _lastHppVersion;
+
+  // CRITICAL FIX: Instance-based tracking methods
+  bool _hasRecentUpdate(DateTime now) {
+    if (_lastUpdateTime == null) return false;
+    return now.difference(_lastUpdateTime!).inMilliseconds < 300;
+  }
+
+  bool _shouldCircuitBreak(DateTime now) {
+    if (_updateCount <= 30) return false;
+
+    if (_lastResetTime == null ||
+        now.difference(_lastResetTime!).inSeconds >= 10) {
+      _updateCount = 0;
+      _lastResetTime = now;
+      return false;
+    }
+
+    return true;
+  }
+
+  void _recordUpdate(DateTime now) {
+    _lastUpdateTime = now;
+    _updateCount++;
+  }
+
+  void _disposeTracking() {
+    _lastUpdateTime = null;
+    _lastResetTime = null;
+    _updateCount = 0;
+  }
 
   // CRITICAL FIX: Safe async operation with queue system
   Future<T?> _safeAsyncOperation<T>(Future<T> Function() operation) async {
@@ -153,13 +188,27 @@ class OperationalProvider with ChangeNotifier {
     });
   }
 
-  // CRITICAL FIX: Anti-loop HPP update mechanism with queue protection
+  // CRITICAL FIX: Anti-loop HPP update mechanism with instance-based tracking
   void updateFromHPP(SharedCalculationData hppData, int hppVersion) {
     if (_isDisposed || _isUpdating || _isProcessingQueue) return;
 
     // CRITICAL FIX: Only update if HPP version actually changed
     if (_lastHppVersion == hppVersion) {
       return; // Prevent loop - already processed this version
+    }
+
+    // CRITICAL FIX: Use instance-based rate limiting
+    final now = DateTime.now();
+    if (_hasRecentUpdate(now)) {
+      debugPrint(
+          '⚠️ Rate limiting: HPP→Operational update throttled (instance-based)');
+      return;
+    }
+
+    if (_shouldCircuitBreak(now)) {
+      debugPrint(
+          '⚠️ CIRCUIT BREAKER: Too many HPP→Operational updates, pausing (instance-based)');
+      return;
     }
 
     // CRITICAL FIX: Add HPP update to queue to prevent race with other operations
@@ -177,7 +226,11 @@ class OperationalProvider with ChangeNotifier {
         _recalculateOperational();
         _scheduleAutoSave();
 
-        debugPrint('✅ Operational updated from HPP version $hppVersion');
+        // CRITICAL FIX: Record update using instance-based tracking
+        _recordUpdate(now);
+
+        debugPrint(
+            '✅ Operational updated from HPP version $hppVersion (instance-based tracking)');
       } catch (e) {
         if (!_isDisposed) {
           debugPrint('❌ Error updating from HPP: $e');
@@ -502,6 +555,10 @@ class OperationalProvider with ChangeNotifier {
 
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
+
+    // CRITICAL FIX: Dispose instance-based tracking
+    _disposeTracking();
+
     super.dispose();
   }
 }

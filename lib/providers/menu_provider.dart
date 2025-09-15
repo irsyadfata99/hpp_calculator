@@ -1,4 +1,4 @@
-// lib/providers/menu_provider.dart - CRITICAL FIX: Race Condition + Anti-Loop
+// lib/providers/menu_provider.dart - CRITICAL FIX: Memory-Safe Instance-based Tracking
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/menu_model.dart';
@@ -27,6 +27,11 @@ class MenuProvider with ChangeNotifier {
   bool _isUpdating = false;
   Timer? _updateDebounceTimer;
 
+  // CRITICAL FIX: Instance-based tracking (replaces mixin)
+  DateTime? _lastUpdateTime;
+  DateTime? _lastResetTime;
+  int _updateCount = 0;
+
   // CRITICAL FIX: Operation queue to prevent race conditions
   final List<Future<void> Function()> _operationQueue = [];
   bool _isProcessingQueue = false;
@@ -42,6 +47,36 @@ class MenuProvider with ChangeNotifier {
   MenuCalculationResult? get lastCalculationResult => _lastCalculationResult;
   int get lastHppVersion => _lastHppVersion;
   int get lastOpVersion => _lastOpVersion;
+
+  // CRITICAL FIX: Instance-based tracking methods
+  bool _hasRecentUpdate(DateTime now) {
+    if (_lastUpdateTime == null) return false;
+    return now.difference(_lastUpdateTime!).inMilliseconds < 300;
+  }
+
+  bool _shouldCircuitBreak(DateTime now) {
+    if (_updateCount <= 30) return false;
+
+    if (_lastResetTime == null ||
+        now.difference(_lastResetTime!).inSeconds >= 10) {
+      _updateCount = 0;
+      _lastResetTime = now;
+      return false;
+    }
+
+    return true;
+  }
+
+  void _recordUpdate(DateTime now) {
+    _lastUpdateTime = now;
+    _updateCount++;
+  }
+
+  void _disposeTracking() {
+    _lastUpdateTime = null;
+    _lastResetTime = null;
+    _updateCount = 0;
+  }
 
   // CRITICAL FIX: Safe async operation with queue system
   Future<T?> _safeAsyncOperation<T>(Future<T> Function() operation) async {
@@ -157,7 +192,7 @@ class MenuProvider with ChangeNotifier {
     });
   }
 
-  // CRITICAL FIX: Enhanced debounced update mechanism to prevent loops + queue protection
+  // CRITICAL FIX: Enhanced debounced update mechanism with instance-based tracking
   void scheduleUpdate({
     required SharedCalculationData hppData,
     required int hppVersion,
@@ -189,7 +224,7 @@ class MenuProvider with ChangeNotifier {
     });
   }
 
-  // CRITICAL FIX: Actual update method with enhanced anti-loop protection
+  // CRITICAL FIX: Actual update method with instance-based anti-loop protection
   void _performUpdate({
     required SharedCalculationData hppData,
     required int hppVersion,
@@ -207,6 +242,19 @@ class MenuProvider with ChangeNotifier {
 
       if (!hppChanged && !opChanged) {
         return; // No actual changes - prevent unnecessary updates
+      }
+
+      // CRITICAL FIX: Use instance-based rate limiting and circuit breaking
+      final now = DateTime.now();
+      if (_hasRecentUpdate(now)) {
+        debugPrint('⚠️ Rate limiting: Menu update throttled (instance-based)');
+        return;
+      }
+
+      if (_shouldCircuitBreak(now)) {
+        debugPrint(
+            '⚠️ CIRCUIT BREAKER: Too many Menu updates, pausing (instance-based)');
+        return;
       }
 
       // CRITICAL FIX: Additional protection against rapid version changes
@@ -237,7 +285,12 @@ class MenuProvider with ChangeNotifier {
 
       if (!_isDisposed) {
         _recalculateMenu();
-        debugPrint('✅ Menu updated - HPP:$hppVersion, OP:$opVersion');
+
+        // CRITICAL FIX: Record update using instance-based tracking
+        _recordUpdate(now);
+
+        debugPrint(
+            '✅ Menu updated - HPP:$hppVersion, OP:$opVersion (instance-based tracking)');
       }
     } catch (e) {
       if (!_isDisposed) {
@@ -650,6 +703,9 @@ class MenuProvider with ChangeNotifier {
     _autoSaveTimer = null;
     _updateDebounceTimer?.cancel(); // CRITICAL FIX: Cancel debounce timer
     _updateDebounceTimer = null;
+
+    // CRITICAL FIX: Dispose instance-based tracking
+    _disposeTracking();
 
     super.dispose();
   }

@@ -1,10 +1,11 @@
-// lib/widgets/menu/menu_composition_list_widget.dart - CRITICAL FIX
+// lib/widgets/menu/menu_composition_list_widget.dart - CRITICAL FIX: Type Safety Resolved
 import 'package:flutter/material.dart';
 import '../../services/universal_unit_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/constants.dart';
+import '../../models/menu_model.dart';
 
-// FIXED: Simplified & Type-Safe composition item
+// CRITICAL FIX: Type-Safe composition item with proper type checking
 class SafeCompositionItem {
   final String name;
   final double quantity;
@@ -20,43 +21,122 @@ class SafeCompositionItem {
     required this.totalCost,
   });
 
-  // FIXED: Ultra-safe factory constructor
+  // CRITICAL FIX: Ultra-safe factory constructor with proper type checking
   factory SafeCompositionItem.fromDynamic(dynamic item) {
     try {
       if (item == null) return SafeCompositionItem._invalid();
 
-      // Handle MenuComposition objects (has properties)
-      if (item.runtimeType.toString().contains('MenuComposition')) {
+      // CRITICAL FIX: Safe type checking instead of reflection
+      if (item is MenuComposition) {
+        // Direct MenuComposition object
         return SafeCompositionItem(
-          name: _getProperty(item, 'namaIngredient') ?? 'Unknown',
-          quantity: _parseDouble(_getProperty(item, 'jumlahDipakai')) ?? 0.0,
-          unit: _getProperty(item, 'satuan') ?? 'unit',
-          unitPrice: _parseDouble(_getProperty(item, 'hargaPerSatuan')) ?? 0.0,
-          totalCost: _parseDouble(_getProperty(item, 'totalCost')) ?? 0.0,
+          name:
+              item.namaIngredient.isNotEmpty ? item.namaIngredient : 'Unknown',
+          quantity: _validateDouble(item.jumlahDipakai) ?? 0.0,
+          unit: item.satuan.isNotEmpty ? item.satuan : 'unit',
+          unitPrice: _validateDouble(item.hargaPerSatuan) ?? 0.0,
+          totalCost: _validateDouble(item.totalCost) ?? 0.0,
         );
       }
 
-      // Handle Map objects
+      // CRITICAL FIX: Safe Map handling with comprehensive key checking
       if (item is Map) {
         final map = Map<String, dynamic>.from(item);
+
+        // CRITICAL FIX: Multiple key variations support
+        final name = _extractString(
+                map, ['namaIngredient', 'nama_ingredient', 'nama']) ??
+            'Unknown';
+        final quantity = _extractDouble(
+                map, ['jumlahDipakai', 'jumlah_dipakai', 'quantity']) ??
+            0.0;
+        final unit = _extractString(map, ['satuan', 'unit']) ?? 'unit';
+        final unitPrice = _extractDouble(
+                map, ['hargaPerSatuan', 'harga_per_satuan', 'unit_price']) ??
+            0.0;
+        final totalCost =
+            _extractDouble(map, ['totalCost', 'total_cost']) ?? 0.0;
+
         return SafeCompositionItem(
-          name: _parseString(map['namaIngredient'] ?? map['nama_ingredient']) ??
-              'Unknown',
-          quantity:
-              _parseDouble(map['jumlahDipakai'] ?? map['jumlah_dipakai']) ??
-                  0.0,
-          unit: _parseString(map['satuan']) ?? 'unit',
-          unitPrice:
-              _parseDouble(map['hargaPerSatuan'] ?? map['harga_per_satuan']) ??
-                  0.0,
-          totalCost: _parseDouble(map['totalCost'] ?? map['total_cost']) ?? 0.0,
+          name: name,
+          quantity: quantity,
+          unit: unit,
+          unitPrice: unitPrice,
+          totalCost: totalCost,
         );
+      }
+
+      // CRITICAL FIX: Handle objects with properties using safe property access
+      return _extractFromObject(item);
+    } catch (e) {
+      debugPrint('⚠️ Safe parsing failed: $e');
+      return SafeCompositionItem._invalid();
+    }
+  }
+
+  // CRITICAL FIX: Safe object property extraction without reflection
+  static SafeCompositionItem _extractFromObject(dynamic object) {
+    try {
+      // CRITICAL FIX: Use toString() method to extract information safely
+      final objectString = object.toString();
+
+      // Try to extract information from toString representation
+      // This is safer than reflection but limited
+      if (objectString.contains('MenuComposition')) {
+        // Object might have the properties, try safe access
+        try {
+          final name =
+              _safeDynamicAccess(object, 'namaIngredient') ?? 'Unknown Object';
+          final quantity =
+              _validateDouble(_safeDynamicAccess(object, 'jumlahDipakai')) ??
+                  0.0;
+          final unit = _safeDynamicAccess(object, 'satuan') ?? 'unit';
+          final unitPrice =
+              _validateDouble(_safeDynamicAccess(object, 'hargaPerSatuan')) ??
+                  0.0;
+
+          return SafeCompositionItem(
+            name: name,
+            quantity: quantity,
+            unit: unit,
+            unitPrice: unitPrice,
+            totalCost: quantity * unitPrice,
+          );
+        } catch (e) {
+          debugPrint('⚠️ Dynamic access failed: $e');
+        }
       }
 
       return SafeCompositionItem._invalid();
     } catch (e) {
-      debugPrint('⚠️ Safe parsing failed: $e');
+      debugPrint('⚠️ Object extraction failed: $e');
       return SafeCompositionItem._invalid();
+    }
+  }
+
+  // CRITICAL FIX: Safe dynamic access replacement for reflection
+  static dynamic _safeDynamicAccess(dynamic object, String property) {
+    try {
+      // CRITICAL FIX: Only attempt if we know the object type
+      if (object.runtimeType.toString().contains('MenuComposition')) {
+        // Use noSuchMethod approach or return null
+        // This is much safer than reflection
+        switch (property) {
+          case 'namaIngredient':
+            return (object as dynamic).namaIngredient;
+          case 'jumlahDipakai':
+            return (object as dynamic).jumlahDipakai;
+          case 'satuan':
+            return (object as dynamic).satuan;
+          case 'hargaPerSatuan':
+            return (object as dynamic).hargaPerSatuan;
+          default:
+            return null;
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -77,39 +157,35 @@ class SafeCompositionItem {
       quantity > 0 &&
       totalCost >= 0;
 
-  // FIXED: Safe property access using try-catch
-  static dynamic _getProperty(dynamic object, String propertyName) {
-    try {
-      switch (propertyName) {
-        case 'namaIngredient':
-          return object.namaIngredient;
-        case 'jumlahDipakai':
-          return object.jumlahDipakai;
-        case 'satuan':
-          return object.satuan;
-        case 'hargaPerSatuan':
-          return object.hargaPerSatuan;
-        case 'totalCost':
-          return object.totalCost;
-        default:
-          return null;
+  // CRITICAL FIX: Safe string extraction with multiple key support
+  static String? _extractString(Map<String, dynamic> map, List<String> keys) {
+    for (String key in keys) {
+      final value = map[key];
+      if (value != null) {
+        try {
+          final str = value.toString().trim();
+          return str.isEmpty ? null : str;
+        } catch (e) {
+          continue;
+        }
       }
-    } catch (e) {
-      return null;
     }
+    return null;
   }
 
-  static String? _parseString(dynamic value) {
-    if (value == null) return null;
-    try {
-      final str = value.toString().trim();
-      return str.isEmpty ? null : str;
-    } catch (e) {
-      return null;
+  // CRITICAL FIX: Safe double extraction with multiple key support
+  static double? _extractDouble(Map<String, dynamic> map, List<String> keys) {
+    for (String key in keys) {
+      final value = map[key];
+      if (value != null) {
+        final result = _validateDouble(value);
+        if (result != null) return result;
+      }
     }
+    return null;
   }
 
-  static double? _parseDouble(dynamic value) {
+  static double? _validateDouble(dynamic value) {
     if (value == null) return null;
     try {
       if (value is double && value.isFinite) return value;
@@ -141,7 +217,7 @@ class MenuCompositionListWidget extends StatelessWidget {
     required this.onRemoveItem,
   });
 
-  // FIXED: Safe list processing with error isolation
+  // CRITICAL FIX: Safe list processing with error isolation and validation
   List<SafeCompositionItem> get _safeItems {
     final List<SafeCompositionItem> items = [];
 
@@ -150,10 +226,12 @@ class MenuCompositionListWidget extends StatelessWidget {
         final item = SafeCompositionItem.fromDynamic(komposisiMenu[i]);
         if (item.isValid) {
           items.add(item);
+        } else {
+          debugPrint('⚠️ Invalid item at index $i: ${item.name}');
         }
       } catch (e) {
-        debugPrint('⚠️ Skipping invalid item at index $i: $e');
-        // Continue processing other items
+        debugPrint('⚠️ Critical error processing item at index $i: $e');
+        // Continue processing other items - don't let one bad item break everything
       }
     }
 
@@ -302,7 +380,7 @@ class MenuCompositionListWidget extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${komposisiMenu.length} item(s) could not be processed',
+            '${komposisiMenu.length} item(s) could not be processed safely',
             style: TextStyle(
               color: Colors.grey[600],
               fontSize: 12,
@@ -321,7 +399,7 @@ class MenuCompositionListWidget extends StatelessWidget {
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final item = items[index];
-        final originalIndex = _findOriginalIndex(item);
+        final originalIndex = _findOriginalIndex(item, index);
         return _buildCompositionItem(item, originalIndex);
       },
     );
@@ -457,8 +535,9 @@ class MenuCompositionListWidget extends StatelessWidget {
     );
   }
 
-  // FIXED: Safe original index finder
-  int _findOriginalIndex(SafeCompositionItem targetItem) {
+  // CRITICAL FIX: Safe original index finder with fallback
+  int _findOriginalIndex(SafeCompositionItem targetItem, int safeIndex) {
+    // CRITICAL FIX: Try to find exact match first
     for (int i = 0; i < komposisiMenu.length; i++) {
       try {
         final item = SafeCompositionItem.fromDynamic(komposisiMenu[i]);
@@ -472,7 +551,10 @@ class MenuCompositionListWidget extends StatelessWidget {
         continue; // Skip problematic items
       }
     }
-    return 0; // Safe fallback
+
+    // CRITICAL FIX: If exact match not found, use safe fallback
+    // Make sure we don't exceed bounds
+    return safeIndex < komposisiMenu.length ? safeIndex : 0;
   }
 
   String _formatQuantity(double quantity) {
