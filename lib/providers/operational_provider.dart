@@ -150,15 +150,12 @@ class OperationalProvider with ChangeNotifier {
   }
 
   // CRITICAL FIX: Safe notification with disposal check
+// NEW CODE (FIXED):
   void _notifyListenersSafely() {
     if (_isDisposed || _isUpdating) return;
 
-    // CRITICAL FIX: Use microtask to prevent immediate recursion
-    scheduleMicrotask(() {
-      if (!_isDisposed) {
-        notifyListeners();
-      }
-    });
+    // DIRECT CALL - no more scheduleMicrotask
+    notifyListeners();
   }
 
   // INITIALIZATION
@@ -169,6 +166,8 @@ class OperationalProvider with ChangeNotifier {
         final savedData = await StorageService.loadSharedData();
         if (savedData != null && !_isDisposed) {
           _karyawan = savedData.karyawan;
+          print('🔧 LOADED from storage: ${_karyawan.length} karyawan');
+          print('🔧 LOADED savedData.karyawan: ${savedData.karyawan.length}');
           _dataVersion++;
           debugPrint('✅ Operational Data loaded: ${_karyawan.length} karyawan');
         }
@@ -219,7 +218,13 @@ class OperationalProvider with ChangeNotifier {
         _isUpdating = true;
 
         // Update reference data but keep our karyawan list
-        _hppData = hppData.copyWith(karyawan: _karyawan);
+        final oldHppData = _hppData;
+        _hppData = oldHppData.copyWith(
+            karyawan: List.from(_karyawan)); // ← CHANGE THIS LINE
+        print(
+            '🔧 Provider: Updated hppData, karyawan count: ${_hppData.karyawan.length}');
+        print(
+            '🔧 Same object? ${identical(oldHppData, _hppData)}'); // ← ADD THIS
         _lastHppVersion = hppVersion;
         _dataVersion++;
 
@@ -248,6 +253,7 @@ class OperationalProvider with ChangeNotifier {
 
   // KARYAWAN CRUD METHODS - CRITICAL FIX: Queue-based async safety
   Future<void> addKaryawan(String nama, String jabatan, double gaji) async {
+    print('🔍 Provider: addKaryawan called with $nama');
     // CRITICAL FIX: Validate inputs before async operation
     final namaValidation = InputValidator.validateName(nama);
     if (namaValidation != null) {
@@ -301,6 +307,11 @@ class OperationalProvider with ChangeNotifier {
         if (!_isDisposed) {
           // Update combined data and recalculate
           _hppData = _hppData.copyWith(karyawan: _karyawan);
+          print('🔧 After sync - _karyawan: ${_karyawan.length}');
+          print(
+              '🔧 After sync - _hppData.karyawan: ${_hppData.karyawan.length}');
+          print(
+              '🔍 Provider: Updated hppData, karyawan count: ${_hppData.karyawan.length}');
           _dataVersion++;
           _recalculateOperational();
           _setError(null);

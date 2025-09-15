@@ -17,7 +17,6 @@ class StorageService {
 
   // CRITICAL FIX: Thread-safe queue system with Completer coordination
   static DateTime? _lastAutoSave;
-  static bool _isSaving = false;
   static final List<_SaveOperation> _saveQueue = [];
   static bool _isProcessingQueue = false;
   static Completer<void>? _currentSaveOperation;
@@ -32,7 +31,6 @@ class StorageService {
   // CRITICAL FIX: Thread-safe save with operation coordination
   static Future<bool> saveSharedData(SharedCalculationData data) async {
     final operationId = ++_operationId;
-    final operationKey = 'save_$operationId';
 
     // CRITICAL FIX: If already saving the same type, wait for completion
     if (_pendingSaves.containsKey('shared_data')) {
@@ -135,7 +133,6 @@ class StorageService {
   // CRITICAL FIX: Actual save operation with comprehensive error handling
   static Future<bool> _performActualSave(_SaveOperation operation) async {
     try {
-      _isSaving = true;
       _currentSaveOperation = Completer<void>();
 
       final prefs = await SharedPreferences.getInstance();
@@ -157,7 +154,6 @@ class StorageService {
       developer.log('Save operation error: $e', name: 'StorageService');
       return false;
     } finally {
-      _isSaving = false;
       _currentSaveOperation?.complete();
       _currentSaveOperation = null;
     }

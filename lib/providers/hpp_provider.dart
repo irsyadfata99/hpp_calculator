@@ -119,12 +119,8 @@ class HPPProvider with ChangeNotifier {
   void _notifyListenersSafely() {
     if (_isDisposed || _isUpdating) return;
 
-    // CRITICAL FIX: Use microtask to prevent immediate recursion
-    scheduleMicrotask(() {
-      if (!_isDisposed) {
-        notifyListeners();
-      }
-    });
+    // DIRECT CALL - no more scheduleMicrotask
+    notifyListeners();
   }
 
   // INITIALIZATION

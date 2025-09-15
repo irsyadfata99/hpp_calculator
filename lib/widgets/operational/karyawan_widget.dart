@@ -128,7 +128,7 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
     try {
       // CRITICAL FIX: Call provider method safely
       await widget.onAddKaryawan(nama, jabatan, gaji);
-
+      print('🔍 After widget.onAddKaryawan called');
       // CRITICAL FIX: Clear form only after successful addition
       if (mounted) {
         _namaController.clear();
@@ -174,6 +174,9 @@ class KaryawanWidgetState extends State<KaryawanWidget> {
 
   @override
   Widget build(BuildContext context) {
+    print('🏗️ KaryawanWidget building...');
+    print('👥 SharedData karyawan: ${widget.sharedData.karyawan.length}');
+    print('👥 SharedData object: ${widget.sharedData.hashCode}');
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),

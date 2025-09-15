@@ -191,6 +191,7 @@ class SharedCalculationData {
 
   // Create a copy with updated values - FIXED: Ensure all params are double
   SharedCalculationData copyWith({
+    List<KaryawanData>? karyawan,
     List<Map<String, dynamic>>? variableCosts,
     List<Map<String, dynamic>>? fixedCosts,
     double? estimasiPorsi,
@@ -198,7 +199,6 @@ class SharedCalculationData {
     double? hppMurniPerPorsi,
     double? biayaVariablePerPorsi,
     double? biayaFixedPerPorsi,
-    List<KaryawanData>? karyawan,
     double? totalOperationalCost,
     double? totalHargaSetelahOperational,
   }) {

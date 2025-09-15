@@ -36,17 +36,19 @@ class OperationalCalculatorScreen extends StatelessWidget {
                 _buildOperationalSummaryCard(operationalProvider),
                 const SizedBox(height: AppConstants.defaultPadding),
 
-                // Karyawan Widget - FIXED: Simple data passing
-                KaryawanWidget(
-                  sharedData: operationalProvider.hppData,
-                  onDataChanged: () {
-                    // Data changes are handled automatically by provider
-                  },
-                  onAddKaryawan: (nama, jabatan, gaji) {
-                    operationalProvider.addKaryawan(nama, jabatan, gaji);
-                  },
-                  onRemoveKaryawan: (index) {
-                    operationalProvider.removeKaryawan(index);
+                // Karyawan Widget - FIXED: Wrapped with Consumer for fresh rebuild
+                Consumer<OperationalProvider>(
+                  builder: (context, provider, child) {
+                    return KaryawanWidget(
+                      sharedData: provider.hppData,
+                      onDataChanged: () {},
+                      onAddKaryawan: (nama, jabatan, gaji) {
+                        provider.addKaryawan(nama, jabatan, gaji);
+                      },
+                      onRemoveKaryawan: (index) {
+                        provider.removeKaryawan(index);
+                      },
+                    );
                   },
                 ),
 
@@ -90,11 +92,17 @@ class OperationalCalculatorScreen extends StatelessWidget {
       foregroundColor: AppColors.onPrimary,
       actions: [
         Consumer<OperationalProvider>(
-          builder: (context, provider, child) {
-            if (provider.lastCalculationResult?.isValid == true) {
+          builder: (context, operationalProvider, child) {
+            final karyawanList = operationalProvider.karyawan;
+            print('🔍 Direct access karyawan: $karyawanList');
+            print('🔄 OperationalScreen rebuilding...');
+            print('📊 Karyawan count: ${operationalProvider.karyawanCount}');
+            print('📋 Karyawan data: ${operationalProvider.karyawan.length}');
+            if (operationalProvider.lastCalculationResult?.isValid == true) {
               return IconButton(
                 icon: const Icon(Icons.analytics),
-                onPressed: () => _showAnalysisDialog(context, provider),
+                onPressed: () =>
+                    _showAnalysisDialog(context, operationalProvider),
                 tooltip: 'Analisis Efisiensi',
               );
             }

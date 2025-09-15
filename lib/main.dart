@@ -11,42 +11,6 @@ import 'screens/menu_calculator_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/constants.dart';
 
-// COMPLETE FIX: Mixin untuk tracking provider updates tanpa memory leak
-mixin ProviderUpdateTracking on ChangeNotifier {
-  DateTime? _lastUpdateTime;
-  DateTime? _lastResetTime;
-  int _updateCount = 0;
-
-  bool _hasRecentUpdate(DateTime now) {
-    if (_lastUpdateTime == null) return false;
-    return now.difference(_lastUpdateTime!).inMilliseconds < 300;
-  }
-
-  bool _shouldCircuitBreak(DateTime now) {
-    if (_updateCount <= 30) return false;
-
-    if (_lastResetTime == null ||
-        now.difference(_lastResetTime!).inSeconds >= 10) {
-      _updateCount = 0;
-      _lastResetTime = now;
-      return false;
-    }
-
-    return true;
-  }
-
-  void _recordUpdate(DateTime now) {
-    _lastUpdateTime = now;
-    _updateCount++;
-  }
-
-  void disposeTracking() {
-    _lastUpdateTime = null;
-    _lastResetTime = null;
-    _updateCount = 0;
-  }
-}
-
 // COMPLETE FIX: Global error handling dengan zone protection
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
